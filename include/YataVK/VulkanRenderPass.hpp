@@ -18,8 +18,14 @@ namespace YATAVK {
         { t.getCreateInfo() } -> std::convertible_to<VkRenderPassCreateInfo>;
     };
 
+    class IVulkanRenderPass {
+    public:
+        virtual ~IVulkanRenderPass() = default;
+        [[nodiscard]] virtual VkRenderPass getHandle() const = 0;
+    };
+
     template <RenderPassProvider T>
-    class VulkanRenderPass final {
+    class VulkanRenderPass final : public IVulkanRenderPass {
     public:
         VulkanRenderPass(VulkanDevice* device, T&& provider) : device(device) {
             VkRenderPassCreateInfo createInfo = provider.getCreateInfo();
@@ -34,7 +40,7 @@ namespace YATAVK {
             }
         }
 
-        VkRenderPass getHandle() const { return vkRenderPass; }
+        [[nodiscard]] VkRenderPass getHandle() const override { return vkRenderPass; }
 
         VulkanRenderPass(const VulkanRenderPass&) = delete;
         VulkanRenderPass& operator=(const VulkanRenderPass&) = delete;
