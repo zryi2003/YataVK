@@ -13,3 +13,4 @@
 #include "src/VulkanImage.cpp"
 #include "src/VulkanSampler.cpp"
 #include "src/VulkanSwapChain.cpp"
+#include "src/VulkanDescriptor.cpp"
