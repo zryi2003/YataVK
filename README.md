@@ -1,46 +1,55 @@
 # YataVK
 
-**YataVK** is a lightweight, modern C++20 Vulkan wrapper designed for rapid prototyping and research. It abstracts the verbosity of Vulkan while maintaining explicit control over the graphics pipeline.
+YataVK is a small C++20 Vulkan 1.4 support library for research applications. Its supported path is based on core dynamic rendering and explicit application ownership of platform surfaces.
 
-> Extracted from the **Yata** framework.
+## Supported path
 
-## Key Features
+The default `YataVK` CMake target builds only:
 
-### RAII Resource Management
-All Vulkan resources (`VkDevice`, `VkImage`, `VkBuffer`, etc.) are managed via RAII wrappers, ensuring proper cleanup order and preventing resource leaks.
+- `VulkanInstance`;
+- capability-driven `VulkanDevice`;
+- `VulkanSwapChain` and `VulkanFrameScheduler`;
+- `VulkanDynamicRenderer` with per-swapchain depth images;
+- move-only buffer, image, shader module, descriptor, and graphics-pipeline wrappers.
 
-### Decoupled Architecture
-- **Device & SwapChain Separation**: The `VulkanDevice` is a pure resource factory and handle provider, completely decoupled from the windowing system (`VulkanSwapChain`).
-- **Factory Pattern**: Centralized resource creation logic within `VulkanDevice` to simplify memory allocation and object creation.
+The library requires Vulkan 1.4. `VulkanDynamicRenderer` uses `vkCmdBeginRendering()` and synchronization2; it does not create a `VkRenderPass` or `VkFramebuffer`.
 
-### C++20 Concepts & Templates
-Pipeline and RenderPass creation utilizes C++20 Concepts (`PipelineProvider`, `RenderPassProvider`) to enforce compile-time contracts without the overhead of virtual inheritance.
+## Surface ownership
 
-- **Zero-Overhead Abstraction**: Logic is resolved at compile time.
-- **Flexible Providers**: Users define their own providers to describe pipeline states and render pass attachments.
-
-### Components
-- **VulkanDevice**: Logical device wrapper and resource factory.
-- **VulkanSwapChain**: Handles presentation, image views, and resizing logic.
-
-## Usage Example
+YataVK does not create, destroy, or own a `VkSurfaceKHR`. The application creates the platform surface and keeps it alive until all YataVK devices and swapchains using it are destroyed. Pass the non-owning handle through `VulkanDeviceRequirements::presentationSurface`:
 
 ```cpp
-// Initialize Device
-auto device = new YATAVK::VulkanDevice(instance, surface);
+YATAVK::VulkanInstance instance(instanceConfig);
 
-// Create SwapChain
-auto swapChain = new YATAVK::VulkanSwapChain(device, width, height);
+// Application-owned platform code.
+VkSurfaceKHR surface = createApplicationSurface(instance.getHandle(), nativeWindow);
 
-// Define a RenderPass using a Provider
-YATA::TranglePassProvider passProvider(swapChain->getImageFormat(), VK_FORMAT_D32_SFLOAT);
-auto renderPass = new YATAVK::VulkanRenderPass(device, std::move(passProvider));
+YATAVK::VulkanDeviceRequirements requirements;
+requirements.presentationSurface = surface;
+requirements.requireDynamicRendering = true;
+YATAVK::VulkanDevice device(instance.getHandle(), requirements);
 
-// Define a Pipeline using a Provider
-YATA::TrianglePipelineProvider pipelineProvider(device, renderPass->getHandle(), extent);
-auto pipeline = new YATAVK::VulkanPipeline(device, std::move(pipelineProvider));
+YATAVK::VulkanDynamicRenderer renderer(
+    device,
+    YATAVK::VulkanSwapChainConfig{width, height, true, 3});
 ```
 
-## Special Features
+## Graphics pipelines and descriptors
 
-- **Built-in "Ancient Relic" Achievement Detector**: Automatically detects systems that shouldn't exist in 2026.
+`VulkanGraphicsPipelineConfig::descriptorSetLayouts` is copied into `VkPipelineLayoutCreateInfo`; push-constant ranges remain independent. `VulkanDescriptorWriter` stores stable indices while writes are assembled and materializes `VkWriteDescriptorSet` pointers only in `overwrite()`, after its backing vectors have reached their final size. Vector growth therefore cannot leave dangling descriptor-info pointers.
+
+## Legacy code
+
+The following files belong to the old render-pass path and live in `YATAVK::Legacy`:
+
+- `VulkanCommon.h`;
+- `VulkanFrameBuffer.h/.cpp`;
+- `VulkanPipeline.hpp`;
+- `VulkanRenderPass.hpp`;
+- `VulkanSampler.h/.cpp`.
+
+This path is known broken, unsupported, and intentionally excluded from the default target. Setting `YATAVK_BUILD_LEGACY=ON` fails configuration instead of suggesting that the code is usable. `YataVK.cpp`, the old source-aggregation entry point, is also unsupported and must not be compiled. The legacy sources are retained only for archaeology until they are deleted or rewritten.
+
+## ImGui
+
+Consumers must initialize Dear ImGui with `UseDynamicRendering = true` and a matching `VkPipelineRenderingCreateInfo`. YataVK does not provide a legacy ImGui render-pass compatibility path.
