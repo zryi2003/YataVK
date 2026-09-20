@@ -5,16 +5,14 @@
 #ifndef YATA_VULKANRENDERPASS_HPP
 #define YATA_VULKANRENDERPASS_HPP
 
-#include <concepts>
-
-#include <vulkan/vulkan_core.h>
-
 #include "VulkanDevice.h"
 
-namespace YATAVK {
-    template<typename T>
-    concept RenderPassProvider = requires(T t)
-    {
+#include <concepts>
+#include <vulkan/vulkan_core.h>
+
+namespace YATAVK::Legacy {
+    template <typename T>
+    concept RenderPassProvider = requires(T t) {
         { t.getCreateInfo() } -> std::convertible_to<VkRenderPassCreateInfo>;
     };
 
@@ -24,8 +22,7 @@ namespace YATAVK {
         [[nodiscard]] virtual VkRenderPass getHandle() const = 0;
     };
 
-    template <RenderPassProvider T>
-    class VulkanRenderPass final : public IVulkanRenderPass {
+    template <RenderPassProvider T> class VulkanRenderPass final : public IVulkanRenderPass {
     public:
         VulkanRenderPass(VulkanDevice* device, T&& provider) : device(device) {
             VkRenderPassCreateInfo createInfo = provider.getCreateInfo();
@@ -44,11 +41,12 @@ namespace YATAVK {
 
         VulkanRenderPass(const VulkanRenderPass&) = delete;
         VulkanRenderPass& operator=(const VulkanRenderPass&) = delete;
+
     private:
         VulkanDevice* device;
 
         VkRenderPass vkRenderPass = VK_NULL_HANDLE;
     };
-}
+} // namespace YATAVK::Legacy
 
-#endif //YATA_VULKANRENDERPASS_HPP
+#endif // YATA_VULKANRENDERPASS_HPP

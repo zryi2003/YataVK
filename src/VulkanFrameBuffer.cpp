@@ -4,7 +4,7 @@
 
 #include "YataVK/VulkanFrameBuffer.h"
 
-namespace YATAVK {
+namespace YATAVK::Legacy {
     void VulkanFrameBuffer::init(VkRenderPass render_pass, const std::vector<VkImageView>& attachments) {
         VkFramebufferCreateInfo framebufferInfo{};
         framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
@@ -22,4 +22,4 @@ namespace YATAVK {
     void VulkanFrameBuffer::cleanUp() const {
         vkDestroyFramebuffer(device->getLogicalDevice(), vkFramebuffer, nullptr);
     }
-} // YATAVK
+} // namespace YATAVK::Legacy

@@ -4,8 +4,9 @@
 
 #include "YataVK/VulkanSampler.h"
 
-namespace YATAVK {
-    void VulkanSampler::init(VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode addressMode, VkBorderColor borderColor, float maxAnisotropy) {
+namespace YATAVK::Legacy {
+    void VulkanSampler::init(VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode addressMode,
+                             VkBorderColor borderColor, float maxAnisotropy) {
         VkSamplerCreateInfo samplerInfo{};
         samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         samplerInfo.magFilter = magFilter;
@@ -33,4 +34,4 @@ namespace YATAVK {
         }
     }
 
-} // YATAVK
+} // namespace YATAVK::Legacy

@@ -7,10 +7,12 @@
 
 #include "VulkanDevice.h"
 
-namespace YATAVK {
+namespace YATAVK::Legacy {
     class VulkanSampler final {
     public:
-        VulkanSampler(VulkanDevice* device, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode addressMode, VkBorderColor borderColor, float maxAnisotropy) : device(device) {
+        VulkanSampler(VulkanDevice* device, VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode addressMode,
+                      VkBorderColor borderColor, float maxAnisotropy)
+            : device(device) {
             try {
                 init(magFilter, minFilter, addressMode, borderColor, maxAnisotropy);
             } catch (const std::exception& e) {
@@ -23,13 +25,15 @@ namespace YATAVK {
         VulkanSampler& operator=(const VulkanSampler&) = delete;
 
         [[nodiscard]] VkSampler getHandle() const { return vkSampler; }
+
     private:
-        void init(VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode addressMode, VkBorderColor borderColor, float maxAnisotropy);
+        void init(VkFilter magFilter, VkFilter minFilter, VkSamplerAddressMode addressMode, VkBorderColor borderColor,
+                  float maxAnisotropy);
         void cleanUp() const;
 
         VulkanDevice* device;
         VkSampler vkSampler;
     };
-} // YATAVK
+} // namespace YATAVK::Legacy
 
-#endif //YATA_VULKANSAMPLER_H
+#endif // YATA_VULKANSAMPLER_H

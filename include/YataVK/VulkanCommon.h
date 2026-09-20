@@ -6,13 +6,12 @@
 #define YATA_VULKANCOMMON_H
 
 #include <cstring>
-#include <vector>
-#include <optional>
 #include <fstream>
-
+#include <optional>
+#include <vector>
 #include <vulkan/vulkan_core.h>
 
-namespace YATAVK {
+namespace YATAVK::Legacy {
 #ifdef DEBUG
     const bool enableValidationLayers = true;
 #else
@@ -20,20 +19,17 @@ namespace YATAVK {
 #endif
 
     /*---------------------Set Validation Layers and Device Extensions We Need-------------------*/
-    inline const std::vector<const char *> validationLayers = { // 启用的验证层
-        "VK_LAYER_KHRONOS_validation"
-    };
-    // 如果启用了 validation layer 但是在 Vulkan Configurator 中的 Debug Action 里面没打开 Debug Output, 那么 validation layer 不会输出任何东西
+    inline const std::vector<const char*> validationLayers = { // 启用的验证层
+        "VK_LAYER_KHRONOS_validation"};
+    // 如果启用了 validation layer 但是在 Vulkan Configurator 中的 Debug Action 里面没打开 Debug Output, 那么 validation
+    // layer 不会输出任何东西
 
-    inline const std::vector<const char *> deviceExtensions = { // 需要使用的设备扩展
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-        VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME,
-        VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME
-    };
+    inline const std::vector<const char*> deviceExtensions = { // 需要使用的设备扩展
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
+        VK_KHR_DEPTH_STENCIL_RESOLVE_EXTENSION_NAME, VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME};
 
     // https://docs.vulkan.org/samples/latest/samples/extensions/dynamic_rendering/README.html
-    inline constexpr VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_feature {
+    inline constexpr VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_feature{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR,
         .dynamicRendering = VK_TRUE,
     };
@@ -43,9 +39,7 @@ namespace YATAVK {
         std::optional<uint32_t> graphicsFamily;
         std::optional<uint32_t> presentFamily;
 
-        [[nodiscard]] bool isComplete() const {
-            return graphicsFamily.has_value() && presentFamily.has_value();
-        }
+        [[nodiscard]] bool isComplete() const { return graphicsFamily.has_value() && presentFamily.has_value(); }
     };
 
     struct SwapChainSupportDetails {
@@ -54,7 +48,8 @@ namespace YATAVK {
         std::vector<VkPresentModeKHR> presentModes;
     };
 
-    // 如果启用了 validation layer 但是在 Vulkan Configurator 中的 Debug Action 里面没打开 Debug Output, 那么 validation layer 不会输出任何东西
+    // 如果启用了 validation layer 但是在 Vulkan Configurator 中的 Debug Action 里面没打开 Debug Output, 那么 validation
+    // layer 不会输出任何东西
 
     inline bool checkValidationLayerSupport() {
         uint32_t layerCount;
@@ -63,10 +58,10 @@ namespace YATAVK {
         std::vector<VkLayerProperties> availableLayers(layerCount);
         vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-        for (const char *layerName: validationLayers) {
+        for (const char* layerName : validationLayers) {
             bool layerFound = false;
 
-            for (const auto &layerProperties: availableLayers) {
+            for (const auto& layerProperties : availableLayers) {
                 if (std::strcmp(layerName, layerProperties.layerName) == 0) {
                     layerFound = true;
                     break;
@@ -106,6 +101,6 @@ namespace YATAVK {
         }
         return shaderModule;
     }
-}
+} // namespace YATAVK::Legacy
 
-#endif //YATA_VULKANCOMMON_H
+#endif // YATA_VULKANCOMMON_H

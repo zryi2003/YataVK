@@ -5,14 +5,16 @@
 #ifndef YATA_VULKANFRAMEBUFFER_H
 #define YATA_VULKANFRAMEBUFFER_H
 
-#include <vulkan/vulkan_core.h>
-
 #include "VulkanDevice.h"
 
-namespace YATAVK {
+#include <vulkan/vulkan_core.h>
+
+namespace YATAVK::Legacy {
     class VulkanFrameBuffer final {
     public:
-        VulkanFrameBuffer(VulkanDevice* device, VkRenderPass render_pass, const std::vector<VkImageView>& attachments, VkExtent2D extent) : device(device), extent(extent) {
+        VulkanFrameBuffer(VulkanDevice* device, VkRenderPass render_pass, const std::vector<VkImageView>& attachments,
+                          VkExtent2D extent)
+            : device(device), extent(extent) {
             try {
                 init(render_pass, attachments);
             } catch (const std::exception& e) {
@@ -35,6 +37,6 @@ namespace YATAVK {
         VkFramebuffer vkFramebuffer;
         VkExtent2D extent;
     };
-} // YATAVK
+} // namespace YATAVK::Legacy
 
-#endif //YATA_VULKANFRAMEBUFFER_H
+#endif // YATA_VULKANFRAMEBUFFER_H

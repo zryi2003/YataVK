@@ -5,16 +5,14 @@
 #ifndef YATA_VULKANPIPELINE_HPP
 #define YATA_VULKANPIPELINE_HPP
 
-#include <concepts>
-
-#include <vulkan/vulkan_core.h>
-
 #include "VulkanDevice.h"
 
-namespace YATAVK {
-    template<typename T>
-    concept PipelineProvider = requires(T t, VkPipelineLayout layout)
-    {
+#include <concepts>
+#include <vulkan/vulkan_core.h>
+
+namespace YATAVK::Legacy {
+    template <typename T>
+    concept PipelineProvider = requires(T t, VkPipelineLayout layout) {
         { t.getLayoutCreateInfo() } -> std::convertible_to<VkPipelineLayoutCreateInfo>;
         { t.getPipelineCreateInfo(layout) };
     };
@@ -26,29 +24,32 @@ namespace YATAVK {
         [[nodiscard]] virtual VkPipelineLayout getLayout() const = 0;
     };
 
-    template <PipelineProvider T>
-    class VulkanPipeline final : public IVulkanPipeline {
+    template <PipelineProvider T> class VulkanPipeline final : public IVulkanPipeline {
     public:
         VulkanPipeline(VulkanDevice* device, T&& provider) : device(device) {
             VkPipelineLayoutCreateInfo layoutInfo = provider.getLayoutCreateInfo();
-            if (vkCreatePipelineLayout(device->getLogicalDevice(), &layoutInfo, nullptr, &vkPipelineLayout) != VK_SUCCESS) {
+            if (vkCreatePipelineLayout(device->getLogicalDevice(), &layoutInfo, nullptr, &vkPipelineLayout) !=
+                VK_SUCCESS) {
                 throw std::runtime_error("failed to create pipeline layout");
             }
 
             auto pipelineInfo = provider.getPipelineCreateInfo(vkPipelineLayout);
 
             if constexpr (std::is_same_v<decltype(pipelineInfo), VkGraphicsPipelineCreateInfo>) {
-                if (vkCreateGraphicsPipelines(device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline) != VK_SUCCESS) {
+                if (vkCreateGraphicsPipelines(device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+                                              &vkPipeline) != VK_SUCCESS) {
                     throw std::runtime_error("Failed to create graphics pipeline");
                 }
             } else if constexpr (std::is_same_v<decltype(pipelineInfo), VkComputePipelineCreateInfo>) {
-                if (vkCreateComputePipelines(device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &vkPipeline) != VK_SUCCESS) {
+                if (vkCreateComputePipelines(device->getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr,
+                                             &vkPipeline) != VK_SUCCESS) {
                     throw std::runtime_error("Failed to create compute pipeline");
                 }
             } else {
-                static_assert(std::is_same_v<decltype(pipelineInfo), VkGraphicsPipelineCreateInfo> ||
-                              std::is_same_v<decltype(pipelineInfo), VkComputePipelineCreateInfo>,
-                              "PipelineProvider must return either VkGraphicsPipelineCreateInfo or VkComputePipelineCreateInfo");
+                static_assert(
+                    std::is_same_v<decltype(pipelineInfo), VkGraphicsPipelineCreateInfo> ||
+                        std::is_same_v<decltype(pipelineInfo), VkComputePipelineCreateInfo>,
+                    "PipelineProvider must return either VkGraphicsPipelineCreateInfo or VkComputePipelineCreateInfo");
             }
         }
 
@@ -73,6 +74,6 @@ namespace YATAVK {
         VkPipelineLayout vkPipelineLayout = VK_NULL_HANDLE;
         VkPipeline vkPipeline = VK_NULL_HANDLE;
     };
-}
+} // namespace YATAVK::Legacy
 
-#endif //YATA_VULKANPIPELINE_HPP
+#endif // YATA_VULKANPIPELINE_HPP
