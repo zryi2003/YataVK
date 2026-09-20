@@ -1,118 +1,206 @@
-//
-// Created by Zhuoran Yi on 2026/2/11.
-//
-
 #include "YataVK/VulkanDescriptor.hpp"
+
+#include "YataVK/VulkanError.hpp"
+
+#include <algorithm>
 #include <stdexcept>
-#include <cassert>
+#include <utility>
 
 namespace YATAVK {
 
-    // ================= Builder Implementation =================
+    VulkanDescriptorPool::VulkanDescriptorPool(VulkanDevice& device, const VulkanDescriptorPoolConfig& config)
+        : device_(&device) {
+        if (config.maxSets == 0 || config.sizes.empty()) {
+            throw std::invalid_argument("VulkanDescriptorPoolConfig requires sizes and a non-zero maxSets");
+        }
+        VkDescriptorPoolCreateInfo createInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        createInfo.flags = config.flags;
+        createInfo.maxSets = config.maxSets;
+        createInfo.poolSizeCount = static_cast<uint32_t>(config.sizes.size());
+        createInfo.pPoolSizes = config.sizes.data();
+        checkVk(vkCreateDescriptorPool(device_->getLogicalDevice(), &createInfo, nullptr, &pool_),
+                "vkCreateDescriptorPool");
+    }
 
-    VulkanDescriptorSetLayout::Builder& VulkanDescriptorSetLayout::Builder::addBinding(
-        uint32_t binding,
-        VkDescriptorType descriptorType,
-        VkShaderStageFlags stageFlags,
-        uint32_t count) {
+    VulkanDescriptorPool::~VulkanDescriptorPool() {
+        destroy();
+    }
 
-        assert(bindings.count(binding) == 0 && "Binding already in use");
+    VulkanDescriptorPool::VulkanDescriptorPool(VulkanDescriptorPool&& other) noexcept
+        : device_(std::exchange(other.device_, nullptr)), pool_(std::exchange(other.pool_, VK_NULL_HANDLE)) {
+    }
 
-        VkDescriptorSetLayoutBinding layoutBinding{};
-        layoutBinding.binding = binding;
-        layoutBinding.descriptorType = descriptorType;
-        layoutBinding.descriptorCount = count;
-        layoutBinding.stageFlags = stageFlags;
+    VulkanDescriptorPool& VulkanDescriptorPool::operator=(VulkanDescriptorPool&& other) noexcept {
+        if (this != &other) {
+            destroy();
+            device_ = std::exchange(other.device_, nullptr);
+            pool_ = std::exchange(other.pool_, VK_NULL_HANDLE);
+        }
+        return *this;
+    }
 
-        bindings[binding] = layoutBinding;
+    bool VulkanDescriptorPool::allocate(VkDescriptorSetLayout layout, VkDescriptorSet& set) const {
+        VkDescriptorSetAllocateInfo allocationInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocationInfo.descriptorPool = pool_;
+        allocationInfo.descriptorSetCount = 1;
+        allocationInfo.pSetLayouts = &layout;
+        return vkAllocateDescriptorSets(device_->getLogicalDevice(), &allocationInfo, &set) == VK_SUCCESS;
+    }
+
+    void VulkanDescriptorPool::reset() const {
+        checkVk(vkResetDescriptorPool(device_->getLogicalDevice(), pool_, 0), "vkResetDescriptorPool");
+    }
+
+    void VulkanDescriptorPool::destroy() noexcept {
+        if (device_ != nullptr && pool_ != VK_NULL_HANDLE) {
+            vkDestroyDescriptorPool(device_->getLogicalDevice(), pool_, nullptr);
+        }
+        pool_ = VK_NULL_HANDLE;
+        device_ = nullptr;
+    }
+
+    VulkanDescriptorSetLayout::Builder& VulkanDescriptorSetLayout::Builder::addBinding(uint32_t binding,
+                                                                                       VkDescriptorType type,
+                                                                                       VkShaderStageFlags stages,
+                                                                                       uint32_t count) {
+        if (bindings_.contains(binding)) {
+            throw std::invalid_argument("Descriptor binding is already defined");
+        }
+        bindings_.emplace(binding, VkDescriptorSetLayoutBinding{binding, type, count, stages, nullptr});
         return *this;
     }
 
     std::unique_ptr<VulkanDescriptorSetLayout> VulkanDescriptorSetLayout::Builder::build() const {
-        return std::make_unique<VulkanDescriptorSetLayout>(device, bindings);
+        return std::make_unique<VulkanDescriptorSetLayout>(*device_, bindings_);
     }
 
-    // ================= Layout Implementation =================
-
-    VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDevice* device, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings)
-        : device{device}, bindings{bindings} {
-
-        std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings{};
-        for (auto kv : bindings) {
-            setLayoutBindings.push_back(kv.second);
+    VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(
+        VulkanDevice& device, const std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>& bindings)
+        : device_(&device), bindings_(bindings) {
+        std::vector<VkDescriptorSetLayoutBinding> sorted;
+        sorted.reserve(bindings.size());
+        for (const auto& [_, binding] : bindings) {
+            sorted.push_back(binding);
         }
-
-        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutInfo{};
-        descriptorSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        descriptorSetLayoutInfo.bindingCount = static_cast<uint32_t>(setLayoutBindings.size());
-        descriptorSetLayoutInfo.pBindings = setLayoutBindings.data();
-
-        if (vkCreateDescriptorSetLayout(device->getLogicalDevice(), &descriptorSetLayoutInfo, nullptr, &vkDescriptorSetLayout) != VK_SUCCESS) {
-            throw std::runtime_error("failed to create descriptor set layout!");
-        }
+        std::sort(sorted.begin(), sorted.end(),
+                  [](const auto& left, const auto& right) { return left.binding < right.binding; });
+        VkDescriptorSetLayoutCreateInfo createInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        createInfo.bindingCount = static_cast<uint32_t>(sorted.size());
+        createInfo.pBindings = sorted.data();
+        checkVk(vkCreateDescriptorSetLayout(device_->getLogicalDevice(), &createInfo, nullptr, &layout_),
+                "vkCreateDescriptorSetLayout");
     }
 
     VulkanDescriptorSetLayout::~VulkanDescriptorSetLayout() {
-        vkDestroyDescriptorSetLayout(device->getLogicalDevice(), vkDescriptorSetLayout, nullptr);
+        destroy();
     }
 
-    // ================= Writer Implementation =================
+    VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VulkanDescriptorSetLayout&& other) noexcept
+        : device_(std::exchange(other.device_, nullptr)), layout_(std::exchange(other.layout_, VK_NULL_HANDLE)),
+          bindings_(std::move(other.bindings_)) {
+    }
 
-    VulkanDescriptorWriter::VulkanDescriptorWriter(VulkanDevice* device, VulkanDescriptorSetLayout& setLayout)
-        : device{device}, descriptorSetLayout{setLayout}{}
-
-    VulkanDescriptorWriter& VulkanDescriptorWriter::writeBuffer(uint32_t binding, VkDescriptorBufferInfo* bufferInfo) {
-        assert(descriptorSetLayout.bindings.count(binding) == 1 && "Layout does not contain specified binding");
-
-        auto& bindingDescription = descriptorSetLayout.bindings[binding];
-
-        assert(bindingDescription.descriptorCount == 1 && "Binding single descriptor info, but binding expects multiple");
-
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.descriptorType = bindingDescription.descriptorType;
-        write.dstBinding = binding;
-        write.pBufferInfo = bufferInfo;
-        write.descriptorCount = 1;
-
-        writes.push_back(write);
+    VulkanDescriptorSetLayout& VulkanDescriptorSetLayout::operator=(VulkanDescriptorSetLayout&& other) noexcept {
+        if (this != &other) {
+            destroy();
+            device_ = std::exchange(other.device_, nullptr);
+            layout_ = std::exchange(other.layout_, VK_NULL_HANDLE);
+            bindings_ = std::move(other.bindings_);
+        }
         return *this;
     }
 
-    VulkanDescriptorWriter& VulkanDescriptorWriter::writeImage(uint32_t binding, VkDescriptorImageInfo* imageInfo) {
-        assert(descriptorSetLayout.bindings.count(binding) == 1 && "Layout does not contain specified binding");
+    void VulkanDescriptorSetLayout::destroy() noexcept {
+        if (device_ != nullptr && layout_ != VK_NULL_HANDLE) {
+            vkDestroyDescriptorSetLayout(device_->getLogicalDevice(), layout_, nullptr);
+        }
+        layout_ = VK_NULL_HANDLE;
+        device_ = nullptr;
+    }
 
-        auto& bindingDescription = descriptorSetLayout.bindings[binding];
+    VulkanDescriptorWriter::VulkanDescriptorWriter(VulkanDevice& device, const VulkanDescriptorPool& pool,
+                                                   VulkanDescriptorSetLayout& layout)
+        : device_(&device), pool_(&pool), layout_(&layout) {
+    }
 
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.descriptorType = bindingDescription.descriptorType;
-        write.dstBinding = binding;
-        write.pImageInfo = imageInfo;
-        write.descriptorCount = 1;
+    VulkanDescriptorWriter& VulkanDescriptorWriter::writeBuffer(uint32_t binding,
+                                                                const VkDescriptorBufferInfo& bufferInfo) {
+        const auto found = layout_->bindings_.find(binding);
+        if (found == layout_->bindings_.end() || found->second.descriptorCount != 1) {
+            throw std::invalid_argument("Descriptor buffer binding is absent or is not scalar");
+        }
+        switch (found->second.descriptorType) {
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+        case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
+        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+            break;
+        default:
+            throw std::invalid_argument("Descriptor binding does not accept buffer info");
+        }
+        bufferInfos_.push_back(bufferInfo);
+        PendingWrite pending;
+        pending.write.dstBinding = binding;
+        pending.write.descriptorCount = 1;
+        pending.write.descriptorType = found->second.descriptorType;
+        pending.infoIndex = bufferInfos_.size() - 1;
+        pending.usesImageInfo = false;
+        pendingWrites_.push_back(pending);
+        return *this;
+    }
 
-        writes.push_back(write);
+    VulkanDescriptorWriter& VulkanDescriptorWriter::writeImage(uint32_t binding,
+                                                               const VkDescriptorImageInfo& imageInfo) {
+        const auto found = layout_->bindings_.find(binding);
+        if (found == layout_->bindings_.end() || found->second.descriptorCount != 1) {
+            throw std::invalid_argument("Descriptor image binding is absent or is not scalar");
+        }
+        switch (found->second.descriptorType) {
+        case VK_DESCRIPTOR_TYPE_SAMPLER:
+        case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
+        case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+        case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
+        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+            break;
+        default:
+            throw std::invalid_argument("Descriptor binding does not accept image info");
+        }
+        imageInfos_.push_back(imageInfo);
+        PendingWrite pending;
+        pending.write.dstBinding = binding;
+        pending.write.descriptorCount = 1;
+        pending.write.descriptorType = found->second.descriptorType;
+        pending.infoIndex = imageInfos_.size() - 1;
+        pending.usesImageInfo = true;
+        pendingWrites_.push_back(pending);
         return *this;
     }
 
     bool VulkanDescriptorWriter::build(VkDescriptorSet& set) {
-        VkDescriptorSetAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        allocInfo.descriptorPool = device->getDescriptorPool(); // 使用 Device 中的全局 Pool
-        allocInfo.pSetLayouts = &descriptorSetLayout.vkDescriptorSetLayout;
-        allocInfo.descriptorSetCount = 1;
-
-        if (vkAllocateDescriptorSets(device->getLogicalDevice(), &allocInfo, &set) != VK_SUCCESS) {
+        if (!pool_->allocate(layout_->getHandle(), set)) {
             return false;
         }
         overwrite(set);
         return true;
     }
 
-    void VulkanDescriptorWriter::overwrite(VkDescriptorSet& set) {
-        for (auto& write : writes) {
+    void VulkanDescriptorWriter::overwrite(VkDescriptorSet set) {
+        // Store indices while the writer is assembled. Materialize Vulkan's raw
+        // pointers only after all backing vectors have reached their final size.
+        std::vector<VkWriteDescriptorSet> writes;
+        writes.reserve(pendingWrites_.size());
+        for (const PendingWrite& pending : pendingWrites_) {
+            VkWriteDescriptorSet write = pending.write;
             write.dstSet = set;
+            if (pending.usesImageInfo) {
+                write.pImageInfo = &imageInfos_.at(pending.infoIndex);
+            } else {
+                write.pBufferInfo = &bufferInfos_.at(pending.infoIndex);
+            }
+            writes.push_back(write);
         }
-        vkUpdateDescriptorSets(device->getLogicalDevice(), writes.size(), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(device_->getLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                               nullptr);
     }
-}
+
+} // namespace YATAVK

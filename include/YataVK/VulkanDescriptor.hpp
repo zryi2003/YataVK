@@ -1,60 +1,99 @@
-//
-// Created by Zhuoran Yi on 2026/2/11.
-//
+#pragma once
 
-#ifndef YATA_VULKANDESCRIPTOR_HPP
-#define YATA_VULKANDESCRIPTOR_HPP
+#include "YataVK/VulkanDevice.h"
 
-#include "VulkanDevice.h"
+#include <cstddef>
 #include <memory>
 #include <unordered_map>
+#include <vector>
+#include <vulkan/vulkan.h>
 
 namespace YATAVK {
+
+    struct VulkanDescriptorPoolConfig {
+        uint32_t maxSets = 64;
+        VkDescriptorPoolCreateFlags flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        std::vector<VkDescriptorPoolSize> sizes;
+    };
+
+    class VulkanDescriptorPool final {
+    public:
+        VulkanDescriptorPool(VulkanDevice& device, const VulkanDescriptorPoolConfig& config);
+        ~VulkanDescriptorPool();
+
+        VulkanDescriptorPool(const VulkanDescriptorPool&) = delete;
+        VulkanDescriptorPool& operator=(const VulkanDescriptorPool&) = delete;
+        VulkanDescriptorPool(VulkanDescriptorPool&& other) noexcept;
+        VulkanDescriptorPool& operator=(VulkanDescriptorPool&& other) noexcept;
+
+        [[nodiscard]] VkDescriptorPool getHandle() const { return pool_; }
+        [[nodiscard]] bool allocate(VkDescriptorSetLayout layout, VkDescriptorSet& set) const;
+        void reset() const;
+
+    private:
+        void destroy() noexcept;
+
+        VulkanDevice* device_ = nullptr;
+        VkDescriptorPool pool_ = VK_NULL_HANDLE;
+    };
+
     class VulkanDescriptorSetLayout final {
     public:
         class Builder {
         public:
-            Builder(VulkanDevice* device) : device(device) {}
+            explicit Builder(VulkanDevice& device) : device_(&device) {}
+            explicit Builder(VulkanDevice* device) : device_(device) {}
+            Builder& addBinding(uint32_t binding, VkDescriptorType type, VkShaderStageFlags stages, uint32_t count = 1);
+            [[nodiscard]] std::unique_ptr<VulkanDescriptorSetLayout> build() const;
 
-            Builder& addBinding(uint32_t binding, VkDescriptorType descriptorType, VkShaderStageFlags stageFlags, uint32_t count = 1);
-            std::unique_ptr<VulkanDescriptorSetLayout> build() const;
         private:
-            VulkanDevice* device;
-            std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings{};
+            VulkanDevice* device_;
+            std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings_;
         };
 
-        VulkanDescriptorSetLayout(VulkanDevice* device, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings);
+        VulkanDescriptorSetLayout(VulkanDevice& device,
+                                  const std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding>& bindings);
         ~VulkanDescriptorSetLayout();
 
         VulkanDescriptorSetLayout(const VulkanDescriptorSetLayout&) = delete;
         VulkanDescriptorSetLayout& operator=(const VulkanDescriptorSetLayout&) = delete;
+        VulkanDescriptorSetLayout(VulkanDescriptorSetLayout&& other) noexcept;
+        VulkanDescriptorSetLayout& operator=(VulkanDescriptorSetLayout&& other) noexcept;
 
-        [[nodiscard]] VkDescriptorSetLayout getHandle() const { return vkDescriptorSetLayout; }
+        [[nodiscard]] VkDescriptorSetLayout getHandle() const { return layout_; }
 
     private:
-        VulkanDevice* device;
-        VkDescriptorSetLayout vkDescriptorSetLayout = VK_NULL_HANDLE;
-        std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings;
+        void destroy() noexcept;
+
+        VulkanDevice* device_ = nullptr;
+        VkDescriptorSetLayout layout_ = VK_NULL_HANDLE;
+        std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings_;
 
         friend class VulkanDescriptorWriter;
     };
 
     class VulkanDescriptorWriter final {
     public:
-        VulkanDescriptorWriter(VulkanDevice* device, VulkanDescriptorSetLayout& setLayout);
-
-        VulkanDescriptorWriter& writeBuffer(uint32_t binding, VkDescriptorBufferInfo* bufferInfo);
-        VulkanDescriptorWriter& writeImage(uint32_t binding, VkDescriptorImageInfo* imageInfo);
-
-        bool build(VkDescriptorSet& set);
-        void overwrite(VkDescriptorSet& set);
+        VulkanDescriptorWriter(VulkanDevice& device, const VulkanDescriptorPool& pool,
+                               VulkanDescriptorSetLayout& layout);
+        VulkanDescriptorWriter& writeBuffer(uint32_t binding, const VkDescriptorBufferInfo& bufferInfo);
+        VulkanDescriptorWriter& writeImage(uint32_t binding, const VkDescriptorImageInfo& imageInfo);
+        [[nodiscard]] bool build(VkDescriptorSet& set);
+        void overwrite(VkDescriptorSet set);
 
     private:
-        VulkanDevice* device;
-        VulkanDescriptorSetLayout& descriptorSetLayout;
+        struct PendingWrite {
+            VkWriteDescriptorSet write{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+            size_t infoIndex = 0;
+            bool usesImageInfo = false;
+        };
 
-        std::vector<VkWriteDescriptorSet> writes;
+        VulkanDevice* device_;
+        const VulkanDescriptorPool* pool_;
+        VulkanDescriptorSetLayout* layout_;
+        std::vector<VkDescriptorBufferInfo> bufferInfos_;
+        std::vector<VkDescriptorImageInfo> imageInfos_;
+        std::vector<PendingWrite> pendingWrites_;
     };
-}
 
-#endif //YATA_VULKANDESCRIPTOR_HPP
+} // namespace YATAVK

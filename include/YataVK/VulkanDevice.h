@@ -1,98 +1,79 @@
-//
-// Created by Zhuoran Yi on 25-2-13.
-//
+#pragma once
 
-#ifndef VULKANDEVICE_H
-#define VULKANDEVICE_H
-// 创建顺序: VulkanConfig->VulkanDevice->VulkanCompute->Mesh
-// 回收顺序相反
-#include <stdexcept>
-#include <vector>
+#include <cstdint>
 #include <optional>
-#include <algorithm>
-#include <limits>
-#include <set>
-
-#include <vulkan/vulkan_core.h>
-
-#ifdef YATAVK_ENABLE_VMA
-#include <vma/vk_mem_alloc.h>
-#endif
-
-#include "VulkanCommon.h"
-
+#include <vector>
+#include <vulkan/vulkan.h>
 
 namespace YATAVK {
 
+    struct QueueFamilyIndices {
+        std::optional<uint32_t> graphicsFamily;
+        std::optional<uint32_t> presentFamily;
+
+        [[nodiscard]] bool isComplete() const { return graphicsFamily.has_value() && presentFamily.has_value(); }
+    };
+
+    struct SwapChainSupportDetails {
+        VkSurfaceCapabilitiesKHR capabilities{};
+        std::vector<VkSurfaceFormatKHR> formats;
+        std::vector<VkPresentModeKHR> presentModes;
+    };
+
+    struct VulkanDeviceRequirements {
+        // Non-owning. The application must keep the surface alive through the
+        // device and every swapchain created from it.
+        VkSurfaceKHR presentationSurface = VK_NULL_HANDLE;
+        bool requireDynamicRendering = true;
+        std::vector<const char*> requiredExtensions;
+        VkPhysicalDeviceFeatures requiredFeatures{};
+    };
 
     class VulkanDevice final {
     public:
-        VulkanDevice(VkInstance instance, VkSurfaceKHR surface) {
-            try {
-                init(instance, surface);
-                printDeviceInfo();
-            } catch (const std::exception& e) {
-                cleanUp();
-                throw std::runtime_error("Failed to initialize Vulkan device!");
-            }
-        }
-        ~VulkanDevice() { cleanUp(); }
+        VulkanDevice(VkInstance instance, const VulkanDeviceRequirements& requirements);
+        VulkanDevice(VkInstance instance, VkSurfaceKHR surface);
+        ~VulkanDevice();
+
         VulkanDevice(const VulkanDevice&) = delete;
         VulkanDevice& operator=(const VulkanDevice&) = delete;
+        VulkanDevice(VulkanDevice&& other) noexcept;
+        VulkanDevice& operator=(VulkanDevice&& other) noexcept;
 
-        void init(VkInstance instance, VkSurfaceKHR surface);
-        void cleanUp();
+        [[nodiscard]] VkDevice getLogicalDevice() const { return logicalDevice_; }
+        [[nodiscard]] VkPhysicalDevice getPhysicalDevice() const { return physicalDevice_; }
+        [[nodiscard]] VkSurfaceKHR getSurface() const { return surface_; }
+        [[nodiscard]] VkQueue getGraphicsQueue() const { return graphicsQueue_; }
+        [[nodiscard]] VkQueue getPresentQueue() const { return presentQueue_; }
+        [[nodiscard]] uint32_t getGraphicsQueueFamily() const { return queueFamilies_.graphicsFamily.value(); }
+        [[nodiscard]] uint32_t getPresentQueueFamily() const { return queueFamilies_.presentFamily.value(); }
+        [[nodiscard]] QueueFamilyIndices getQueueFamilyIndices() const { return queueFamilies_; }
+        [[nodiscard]] bool dynamicRenderingEnabled() const { return dynamicRenderingEnabled_; }
 
-        VkQueue getGraphicsQueue() { return vkGraphicsQueue; }
-        VkQueue getPresentQueue() { return vkPresentQueue; }
-        VkDevice getLogicalDevice() { return vkLogicalDevice; }
-        VkPhysicalDevice getPhysicalDevice() { return vkPhysicalDevice; }
-        VkSurfaceKHR getSurface() { return vkSurface; }
-        VkCommandBuffer getCommandBuffer() { return vkCommandBuffer; }
-        VkCommandBuffer& getpCommandBuffer() { return vkCommandBuffer; }
-        VkDescriptorPool getDescriptorPool() { return vkDescriptorPool; }
-        QueueFamilyIndices getQueueFamilyIndices() { return vkQueueFamilyIndices; }
-        uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-        SwapChainSupportDetails querySwapChainSupport() {
-            return querySwapChainSupport(vkPhysicalDevice, vkSurface);
-        }
-
-#ifdef YATAVK_ENABLE_VMA
-        VmaAllocator getVmaAllocator() { return vmaAllocator; }
-#endif
+        [[nodiscard]] uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
+        [[nodiscard]] SwapChainSupportDetails querySwapChainSupport() const;
+        void waitIdle() const;
 
     private:
-        VkInstance vkInstance = VK_NULL_HANDLE;
-        VkDevice vkLogicalDevice = VK_NULL_HANDLE;
-        VkPhysicalDevice vkPhysicalDevice = VK_NULL_HANDLE;
+        void destroy() noexcept;
+        [[nodiscard]] QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice) const;
+        [[nodiscard]] bool supportsExtensions(VkPhysicalDevice physicalDevice,
+                                              const std::vector<const char*>& extensions) const;
+        [[nodiscard]] bool supportsRequiredFeatures(VkPhysicalDevice physicalDevice,
+                                                    const VkPhysicalDeviceFeatures& required) const;
+        void selectPhysicalDevice(const VulkanDeviceRequirements& requirements,
+                                  const std::vector<const char*>& extensions);
+        void createLogicalDevice(const VulkanDeviceRequirements& requirements,
+                                 const std::vector<const char*>& extensions);
 
-
-        QueueFamilyIndices vkQueueFamilyIndices{};
-        VkQueue vkGraphicsQueue = VK_NULL_HANDLE;
-        VkQueue vkPresentQueue = VK_NULL_HANDLE;
-
-        VkSurfaceKHR vkSurface = VK_NULL_HANDLE;
-
-        VkCommandPool vkCommandPool{};
-        VkCommandBuffer vkCommandBuffer{};
-
-        VkDescriptorPool vkDescriptorPool{};
-
-#ifdef YATAVK_ENABLE_VMA
-        VmaAllocator vmaAllocator = VK_NULL_HANDLE;
-#endif
-
-        void pickPhysicalDevice();
-        void createLogicalDevice();
-        void createCommandPool();
-        void createCommandBuffers();
-        void createDescriptorPool();
-        QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface);
-        SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface);
-        bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface);
-
-        void printDeviceInfo();
+        VkInstance instance_ = VK_NULL_HANDLE;
+        VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
+        VkDevice logicalDevice_ = VK_NULL_HANDLE;
+        VkSurfaceKHR surface_ = VK_NULL_HANDLE; // Application-owned.
+        QueueFamilyIndices queueFamilies_{};
+        VkQueue graphicsQueue_ = VK_NULL_HANDLE;
+        VkQueue presentQueue_ = VK_NULL_HANDLE;
+        bool dynamicRenderingEnabled_ = false;
     };
-}
 
-#endif //VULKANDEVICE_H
+} // namespace YATAVK

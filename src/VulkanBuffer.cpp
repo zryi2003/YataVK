@@ -1,128 +1,118 @@
-//
-// Created by Zhuoran Yi on 2026/1/9.
-//
-
 #include "YataVK/VulkanBuffer.hpp"
+
+#include "YataVK/VulkanError.hpp"
+
+#include <cstring>
+#include <stdexcept>
+#include <utility>
 
 namespace YATAVK {
 
-    void VulkanBuffer::init(VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
-        VkBufferCreateInfo bufferInfo{};
-        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-        bufferInfo.size = vkBufferSize;
+    VulkanBuffer::VulkanBuffer(VulkanDevice& device, VkDeviceSize size, VkBufferUsageFlags usage,
+                               VkMemoryPropertyFlags memoryProperties)
+        : device_(&device), size_(size), memoryProperties_(memoryProperties) {
+        if (size == 0) {
+            throw std::invalid_argument("VulkanBuffer size must be non-zero");
+        }
+        VkBufferCreateInfo bufferInfo{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        bufferInfo.size = size;
         bufferInfo.usage = usage;
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-#ifdef YATAVK_ENABLE_VMA
-        VmaAllocationCreateInfo allocCreateInfo = {};
-        allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
-        if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
-            allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |
-                                    VMA_ALLOCATION_CREATE_MAPPED_BIT; // 自动持久化映射
+        checkVk(vkCreateBuffer(device_->getLogicalDevice(), &bufferInfo, nullptr, &buffer_), "vkCreateBuffer");
+        try {
+            VkMemoryRequirements requirements{};
+            vkGetBufferMemoryRequirements(device_->getLogicalDevice(), buffer_, &requirements);
+            VkMemoryAllocateInfo allocationInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
+            allocationInfo.allocationSize = requirements.size;
+            allocationInfo.memoryTypeIndex = device_->findMemoryType(requirements.memoryTypeBits, memoryProperties);
+            checkVk(vkAllocateMemory(device_->getLogicalDevice(), &allocationInfo, nullptr, &memory_),
+                    "vkAllocateMemory(buffer)");
+            checkVk(vkBindBufferMemory(device_->getLogicalDevice(), buffer_, memory_, 0), "vkBindBufferMemory");
+        } catch (...) {
+            destroy();
+            throw;
         }
-
-        if (vmaCreateBuffer(device->getVmaAllocator(), &bufferInfo, &allocCreateInfo, &vkBuffer, &vmaAllocation, nullptr) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create buffer with VMA!");
-        }
-#else
-        if (vkCreateBuffer(device->getLogicalDevice(), &bufferInfo, nullptr, &vkBuffer) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to create buffer!");
-        }
-
-        VkMemoryRequirements memRequirements;
-        vkGetBufferMemoryRequirements(device->getLogicalDevice(), vkBuffer, &memRequirements);
-
-        VkMemoryAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-        allocInfo.allocationSize = memRequirements.size;
-        allocInfo.memoryTypeIndex = device->findMemoryType(memRequirements.memoryTypeBits, properties);
-
-        if (vkAllocateMemory(device->getLogicalDevice(), &allocInfo, nullptr, &vkBufferMemory) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to allocate buffer memory!");
-        }
-
-        vkBindBufferMemory(device->getLogicalDevice(), vkBuffer, vkBufferMemory, 0);
-#endif
     }
 
-    void VulkanBuffer::cleanUp() {
-        if (bufferData) {
-            unmap();
-            bufferData = nullptr;
+    VulkanBuffer::~VulkanBuffer() {
+        destroy();
+    }
+
+    VulkanBuffer::VulkanBuffer(VulkanBuffer&& other) noexcept
+        : device_(std::exchange(other.device_, nullptr)), buffer_(std::exchange(other.buffer_, VK_NULL_HANDLE)),
+          memory_(std::exchange(other.memory_, VK_NULL_HANDLE)), size_(std::exchange(other.size_, 0)),
+          memoryProperties_(other.memoryProperties_), mapped_(std::exchange(other.mapped_, nullptr)) {
+    }
+
+    VulkanBuffer& VulkanBuffer::operator=(VulkanBuffer&& other) noexcept {
+        if (this != &other) {
+            destroy();
+            device_ = std::exchange(other.device_, nullptr);
+            buffer_ = std::exchange(other.buffer_, VK_NULL_HANDLE);
+            memory_ = std::exchange(other.memory_, VK_NULL_HANDLE);
+            size_ = std::exchange(other.size_, 0);
+            memoryProperties_ = other.memoryProperties_;
+            mapped_ = std::exchange(other.mapped_, nullptr);
         }
-#ifdef YATAVK_ENABLE_VMA
-        if (vmaAllocation != nullptr) {
-            vmaDestroyBuffer(device->getVmaAllocator(), vkBuffer, vmaAllocation);
-            vmaAllocation = nullptr;
-            vkBuffer = VK_NULL_HANDLE;
-        }
-        if (vkBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->getLogicalDevice(), vkBuffer, nullptr);
-            vkBuffer = VK_NULL_HANDLE;
-        }
-#else
-        if (vkBuffer != VK_NULL_HANDLE) {
-            vkDestroyBuffer(device->getLogicalDevice(), vkBuffer, nullptr);
-        }
-        if (vkBufferMemory != VK_NULL_HANDLE) {
-            vkFreeMemory(device->getLogicalDevice(), vkBufferMemory, nullptr);
-        }
-#endif
+        return *this;
     }
 
     void VulkanBuffer::map(VkDeviceSize size, VkDeviceSize offset) {
-#ifdef YATAVK_ENABLE_VMA
-        void* ptr = nullptr;
-        if (vmaMapMemory(device->getVmaAllocator(), vmaAllocation, &ptr) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to map buffer memory with VMA!");
+        if ((memoryProperties_ & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) == 0) {
+            throw std::logic_error("Cannot map a non-host-visible VulkanBuffer");
         }
-        bufferData = static_cast<char*>(ptr) + offset;
-#else
-        if (vkMapMemory(device->getLogicalDevice(), vkBufferMemory, offset, size, 0, &bufferData) != VK_SUCCESS) {
-            throw std::runtime_error("Failed to map buffer memory!");
+        if (mapped_ != nullptr) {
+            return;
         }
-#endif
+        checkVk(vkMapMemory(device_->getLogicalDevice(), memory_, offset, size, 0, &mapped_), "vkMapMemory");
     }
 
-    void VulkanBuffer::unmap() {
-        if (bufferData) {
-#ifdef YATAVK_ENABLE_VMA
-            vmaUnmapMemory(device->getVmaAllocator(), vmaAllocation);
-#else
-            vkUnmapMemory(device->getLogicalDevice(), vkBufferMemory);
-#endif
-            bufferData = nullptr;
+    void VulkanBuffer::unmap() noexcept {
+        if (mapped_ != nullptr) {
+            vkUnmapMemory(device_->getLogicalDevice(), memory_);
+            mapped_ = nullptr;
+        }
+    }
+
+    void VulkanBuffer::write(const void* data, VkDeviceSize size, VkDeviceSize offset) {
+        if (data == nullptr || size == 0 || offset + size > size_) {
+            throw std::invalid_argument("VulkanBuffer::write range is invalid");
+        }
+        const bool temporaryMapping = mapped_ == nullptr;
+        if (temporaryMapping) {
+            map();
+        }
+        std::memcpy(static_cast<std::byte*>(mapped_) + offset, data, static_cast<size_t>(size));
+        if ((memoryProperties_ & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0) {
+            flush(size, offset);
+        }
+        if (temporaryMapping) {
+            unmap();
         }
     }
 
     void VulkanBuffer::flush(VkDeviceSize size, VkDeviceSize offset) {
-#ifdef YATAVK_ENABLE_VMA
-        if (vmaAllocation) {
-            vmaFlushAllocation(device->getVmaAllocator(), vmaAllocation, offset, size);
-        }
-#else
-        if (vkBufferMemory != VK_NULL_HANDLE) {
-            VkMappedMemoryRange mappedRange{};
-            mappedRange.sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE;
-            mappedRange.memory = vkBufferMemory;
-            mappedRange.offset = offset;
-            mappedRange.size = size;
-            vkFlushMappedMemoryRanges(device->getLogicalDevice(), 1, &mappedRange);
-        }
-#endif
+        VkMappedMemoryRange range{VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE};
+        range.memory = memory_;
+        range.offset = offset;
+        range.size = size;
+        checkVk(vkFlushMappedMemoryRanges(device_->getLogicalDevice(), 1, &range), "vkFlushMappedMemoryRanges");
     }
 
-
-    void VulkanBuffer::writeToBuffer(void *data, VkDeviceSize size, VkDeviceSize offset) {
-        bool unmapAfter = false;
-        if (!bufferData) {
-            map(VK_WHOLE_SIZE, 0);
-            unmapAfter = true;
+    void VulkanBuffer::destroy() noexcept {
+        if (device_ == nullptr) {
+            return;
         }
-        std::memcpy(static_cast<char*>(bufferData) + offset, data, size == VK_WHOLE_SIZE ? vkBufferSize - offset : size);
-        flush(size, offset);
-        if (unmapAfter) {
-            unmap();
+        unmap();
+        if (buffer_ != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device_->getLogicalDevice(), buffer_, nullptr);
         }
+        if (memory_ != VK_NULL_HANDLE) {
+            vkFreeMemory(device_->getLogicalDevice(), memory_, nullptr);
+        }
+        buffer_ = VK_NULL_HANDLE;
+        memory_ = VK_NULL_HANDLE;
+        device_ = nullptr;
     }
 
-}
+} // namespace YATAVK

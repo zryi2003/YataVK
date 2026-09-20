@@ -1,61 +1,62 @@
-//
-// Created by Zhuoran Yi on 2026/1/8.
-//
+#pragma once
 
-#ifndef YATA_VULKANSWAPCHAIN_H
-#define YATA_VULKANSWAPCHAIN_H
+#include "YataVK/VulkanDevice.h"
 
-#include <stdexcept>
+#include <cstdint>
 #include <vector>
-#include <optional>
-
-#include <vulkan/vulkan_core.h>
-
-#include "VulkanDevice.h"
+#include <vulkan/vulkan.h>
 
 namespace YATAVK {
 
+    struct VulkanSwapChainConfig {
+        uint32_t width = 1;
+        uint32_t height = 1;
+        bool preferMailbox = true;
+        uint32_t preferredImageCount = 3;
+    };
+
     class VulkanSwapChain final {
     public:
-        VulkanSwapChain(VulkanDevice* device, int width, int height) : device(device) {
-            try {
-                init(width, height);
-            } catch (const std::exception& e) {
-                cleanUp();
-                throw std::runtime_error("Failed to initialize Vulkan Swap Chain!");
-            }
-        }
-        ~VulkanSwapChain() { cleanUp(); }
+        VulkanSwapChain(VulkanDevice& device, const VulkanSwapChainConfig& config);
+        VulkanSwapChain(VulkanDevice* device, int width, int height);
+        ~VulkanSwapChain();
 
         VulkanSwapChain(const VulkanSwapChain&) = delete;
         VulkanSwapChain& operator=(const VulkanSwapChain&) = delete;
+        VulkanSwapChain(VulkanSwapChain&& other) noexcept;
+        VulkanSwapChain& operator=(VulkanSwapChain&& other) noexcept;
 
-        [[nodiscard]] VkExtent2D getExtent() const { return vkSwapChainExtent; }
-        [[nodiscard]] VkFormat getImageFormat() const { return vkSwapChainImageFormat; }
-        [[nodiscard]] const std::vector<VkImageView>& getImageViews() const { return vkSwapChainImageViews; }
-        [[nodiscard]] VkSwapchainKHR getHandle() const { return vkSwapChain; }
+        void recreate(const VulkanSwapChainConfig& config);
+        [[nodiscard]] VkResult acquireNextImage(VkSemaphore imageAvailable, uint32_t& imageIndex) const;
+        [[nodiscard]] VkResult present(uint32_t imageIndex, VkSemaphore renderFinished) const;
+
+        [[nodiscard]] VkSwapchainKHR getHandle() const { return swapChain_; }
+        [[nodiscard]] VkExtent2D getExtent() const { return extent_; }
+        [[nodiscard]] VkFormat getImageFormat() const { return imageFormat_; }
+        [[nodiscard]] VkColorSpaceKHR getColorSpace() const { return colorSpace_; }
+        [[nodiscard]] const std::vector<VkImage>& getImages() const { return images_; }
+        [[nodiscard]] const std::vector<VkImageView>& getImageViews() const { return imageViews_; }
+        [[nodiscard]] uint32_t imageCount() const { return static_cast<uint32_t>(images_.size()); }
+        [[nodiscard]] uint64_t generation() const { return generation_; }
 
     private:
-        void init(int width, int height);
-        void cleanUp();
+        void create(const VulkanSwapChainConfig& config, VkSwapchainKHR oldSwapchain);
+        void destroyImageViews() noexcept;
+        void destroy() noexcept;
+        [[nodiscard]] VkSurfaceFormatKHR chooseSurfaceFormat(const SwapChainSupportDetails& support) const;
+        [[nodiscard]] VkPresentModeKHR choosePresentMode(const SwapChainSupportDetails& support,
+                                                         bool preferMailbox) const;
+        [[nodiscard]] VkExtent2D chooseExtent(const VkSurfaceCapabilitiesKHR& capabilities,
+                                              const VulkanSwapChainConfig& config) const;
 
-        void createImageViews();
-
-        VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes);
-        VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, int width, int height);
-        VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats);
-
-        VulkanDevice* device = nullptr;
-
-        VkSwapchainKHR vkSwapChain = VK_NULL_HANDLE;
-
-        VkFormat vkSwapChainImageFormat;
-        VkExtent2D vkSwapChainExtent{};
-
-        std::vector<VkImage> vkSwapChainImages; // 交换链中图片的句柄(我们需要把渲染结果写到交换链上, 这就是Render Target), 它由交换链进行创建与回收
-        std::vector<VkImageView> vkSwapChainImageViews; // 描述如何访问Image
+        VulkanDevice* device_ = nullptr;
+        VkSwapchainKHR swapChain_ = VK_NULL_HANDLE;
+        VkFormat imageFormat_ = VK_FORMAT_UNDEFINED;
+        VkColorSpaceKHR colorSpace_ = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        VkExtent2D extent_{};
+        std::vector<VkImage> images_;
+        std::vector<VkImageView> imageViews_;
+        uint64_t generation_ = 0;
     };
 
-} // YATAVK
-
-#endif //YATA_VULKANSWAPCHAIN_H
+} // namespace YATAVK

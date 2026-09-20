@@ -1,64 +1,47 @@
-//
-// Created by Zhuoran Yi on 25-3-4.
-//
+#pragma once
 
-#ifndef VULKANIMAGE_HPP
-#define VULKANIMAGE_HPP
+#include "YataVK/VulkanDevice.h"
 
-#include <iostream>
-#include <vulkan/vulkan_core.h>
-
-#include "VulkanDevice.h"
+#include <vulkan/vulkan.h>
 
 namespace YATAVK {
+
+    struct VulkanImageConfig {
+        VkExtent3D extent{1, 1, 1};
+        VkFormat format = VK_FORMAT_UNDEFINED;
+        VkImageUsageFlags usage = 0;
+        VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        VkImageTiling tiling = VK_IMAGE_TILING_OPTIMAL;
+        VkMemoryPropertyFlags memoryProperties = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+        VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT;
+    };
+
     class VulkanImage final {
     public:
-        VulkanImage(VulkanDevice* device, VkExtent3D extent, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkImageAspectFlags aspect) : device(device), extent(extent), format(format), tiling(tiling), usage(usage), aspect(aspect) {
-            try {
-                init();
-            } catch (const std::exception& e) {
-                cleanUp();
-                std::cerr << e.what() << std::endl;
-                throw std::runtime_error("Failed to initialize Vulkan image!");
-            }
-        };
-        ~VulkanImage() { cleanUp(); };
+        VulkanImage(VulkanDevice& device, const VulkanImageConfig& config);
+        VulkanImage(VulkanDevice* device, VkExtent3D extent, VkFormat format, VkImageTiling tiling,
+                    VkImageUsageFlags usage, VkImageAspectFlags aspect)
+            : VulkanImage(*device, VulkanImageConfig{extent, format, usage, aspect, tiling}) {}
+        ~VulkanImage();
+
         VulkanImage(const VulkanImage&) = delete;
         VulkanImage& operator=(const VulkanImage&) = delete;
+        VulkanImage(VulkanImage&& other) noexcept;
+        VulkanImage& operator=(VulkanImage&& other) noexcept;
 
-        VkImageView getImageView() { return vkImageView;}
-        VkSampler getSampler() { return vkSampler;}
-        void transitionImageLayout(VkImageLayout oldLayout, VkImageLayout newLayout) const;
-
-        // void loadImage(std::string path);
-
-        // Eigen::Vector4f sample(Eigen::Vector2f uv);
+        [[nodiscard]] VkImage getHandle() const { return image_; }
+        [[nodiscard]] VkImageView getImageView() const { return view_; }
+        [[nodiscard]] VkFormat getFormat() const { return config_.format; }
+        [[nodiscard]] VkExtent3D getExtent() const { return config_.extent; }
 
     private:
-        void init();
-        void cleanUp();
+        void destroy() noexcept;
 
-        VulkanDevice* device;
-
-        void* imageData = nullptr; // CPU端数据, 可以用在 CPU 侧采样 TODO: 留意这个东西有没有内存泄漏
-        int texWidth, texHeight, texChannels;
-
-        VkExtent3D extent;
-        VkFormat format;
-        VkImageTiling tiling;
-        VkImageUsageFlags usage;
-        VkImageAspectFlags aspect;
-
-        VkImage vkImage = VK_NULL_HANDLE;
-#ifdef YATAVK_ENABLE_VMA
-        VmaAllocation vmaAllocation = VK_NULL_HANDLE;
-#else
-        VkDeviceMemory vkImageMemory = VK_NULL_HANDLE;
-#endif
-        VkImageView vkImageView = VK_NULL_HANDLE;
-
-        VkSampler vkSampler = VK_NULL_HANDLE;
+        VulkanDevice* device_ = nullptr;
+        VulkanImageConfig config_{};
+        VkImage image_ = VK_NULL_HANDLE;
+        VkDeviceMemory memory_ = VK_NULL_HANDLE;
+        VkImageView view_ = VK_NULL_HANDLE;
     };
-}
 
-#endif //VULKANIMAGE_HPP
+} // namespace YATAVK
