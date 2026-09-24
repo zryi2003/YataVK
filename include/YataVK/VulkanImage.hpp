@@ -7,6 +7,7 @@
 namespace YATAVK {
 
     struct VulkanImageConfig {
+        // 当前封装固定创建单 mip、单 array layer 的 2D/3D image。
         VkExtent3D extent{1, 1, 1};
         VkFormat format = VK_FORMAT_UNDEFINED;
         VkImageUsageFlags usage = 0;

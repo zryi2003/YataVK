@@ -37,6 +37,7 @@ namespace YATAVK {
         [[nodiscard]] const std::vector<VkImage>& getImages() const { return images_; }
         [[nodiscard]] const std::vector<VkImageView>& getImageViews() const { return imageViews_; }
         [[nodiscard]] uint32_t imageCount() const { return static_cast<uint32_t>(images_.size()); }
+        // 每次成功创建或重建后递增，可用于识别依赖资源是否过期。
         [[nodiscard]] uint64_t generation() const { return generation_; }
 
     private:

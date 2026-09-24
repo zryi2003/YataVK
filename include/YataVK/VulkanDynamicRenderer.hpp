@@ -24,6 +24,7 @@ namespace YATAVK {
         VulkanDynamicRenderer(const VulkanDynamicRenderer&) = delete;
         VulkanDynamicRenderer& operator=(const VulkanDynamicRenderer&) = delete;
 
+        // 成功后由调用者在返回的 command buffer 中录制绘制命令。
         [[nodiscard]] std::optional<VulkanRenderingFrame> beginFrame(const VkClearColorValue& clearColor);
         [[nodiscard]] VulkanFrameStatus endFrame(const VulkanRenderingFrame& frame);
         void recreate(const VulkanSwapChainConfig& config);

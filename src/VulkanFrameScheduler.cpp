@@ -34,6 +34,7 @@ namespace YATAVK {
                         "vkCreateSemaphore(renderFinished)");
 
                 VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+                // 首帧没有待等待的提交，初始置为 signaled 可直接进入录制。
                 fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
                 checkVk(vkCreateFence(device_->getLogicalDevice(), &fenceInfo, nullptr, &frame.inFlight),
                         "vkCreateFence");
@@ -65,6 +66,7 @@ namespace YATAVK {
 
     VulkanBeginFrameResult VulkanFrameScheduler::beginFrame(const VulkanSwapChain& swapChain) {
         FrameResources& frame = frames_[currentFrame_];
+        // 复用该帧槽位前，先等待上一次提交完成。
         checkVk(vkWaitForFences(device_->getLogicalDevice(), 1, &frame.inFlight, VK_TRUE, UINT64_MAX),
                 "vkWaitForFences");
 
@@ -77,6 +79,7 @@ namespace YATAVK {
             checkVk(acquireResult, "vkAcquireNextImageKHR");
         }
 
+        // 成功取得图像后再 reset；out-of-date 提前返回时 fence 仍保持 signaled。
         checkVk(vkResetFences(device_->getLogicalDevice(), 1, &frame.inFlight), "vkResetFences");
         checkVk(vkResetCommandPool(device_->getLogicalDevice(), frame.commandPool, 0), "vkResetCommandPool");
         VkCommandBufferBeginInfo beginInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -96,6 +99,7 @@ namespace YATAVK {
         FrameResources& frame = frames_[currentFrame_];
         checkVk(vkEndCommandBuffer(frame.commandBuffer), "vkEndCommandBuffer");
 
+        // 等到颜色附件阶段才消费 acquire semaphore，避免阻塞更早的流水线阶段。
         constexpr VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         submitInfo.waitSemaphoreCount = 1;
@@ -108,6 +112,7 @@ namespace YATAVK {
         checkVk(vkQueueSubmit(device_->getGraphicsQueue(), 1, &submitInfo, frame.inFlight), "vkQueueSubmit");
 
         const VkResult presentResult = swapChain.present(token.imageIndex, frame.renderFinished);
+        // present 即使要求重建，当前提交也已成立，因此仍推进帧槽位。
         currentFrame_ = (currentFrame_ + 1) % static_cast<uint32_t>(frames_.size());
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
             return VulkanFrameStatus::SwapChainOutOfDate;

@@ -9,6 +9,7 @@ namespace YATAVK {
     struct VulkanInstanceConfig {
         std::string applicationName = "YataVK Application";
         bool enableValidation = false;
+        // 窗口系统所需的 instance extensions 由应用提供。
         std::vector<const char*> requiredExtensions;
     };
 

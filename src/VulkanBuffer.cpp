@@ -20,6 +20,7 @@ namespace YATAVK {
         bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         checkVk(vkCreateBuffer(device_->getLogicalDevice(), &bufferInfo, nullptr, &buffer_), "vkCreateBuffer");
         try {
+            // Vulkan 将资源和内存分离创建，实际分配大小由驱动给出的 requirements 决定。
             VkMemoryRequirements requirements{};
             vkGetBufferMemoryRequirements(device_->getLogicalDevice(), buffer_, &requirements);
             VkMemoryAllocateInfo allocationInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
@@ -83,6 +84,7 @@ namespace YATAVK {
             map();
         }
         std::memcpy(static_cast<std::byte*>(mapped_) + offset, data, static_cast<size_t>(size));
+        // 非 coherent 内存需要显式把 CPU 写入刷新给设备可见。
         if ((memoryProperties_ & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) == 0) {
             flush(size, offset);
         }
@@ -104,6 +106,7 @@ namespace YATAVK {
             return;
         }
         unmap();
+        // 先销毁绑定资源，再释放其底层内存。
         if (buffer_ != VK_NULL_HANDLE) {
             vkDestroyBuffer(device_->getLogicalDevice(), buffer_, nullptr);
         }

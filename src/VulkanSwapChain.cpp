@@ -44,6 +44,7 @@ namespace YATAVK {
     }
 
     void VulkanSwapChain::recreate(const VulkanSwapChainConfig& config) {
+        // 窗口最小化时常得到零尺寸，此时保留旧 swapchain 等待后续重建。
         if (config.width == 0 || config.height == 0) {
             return;
         }
@@ -52,6 +53,7 @@ namespace YATAVK {
         destroyImageViews();
         swapChain_ = VK_NULL_HANDLE;
         try {
+            // oldSwapchain 让驱动复用资源；创建失败时仍恢复旧句柄供析构。
             create(config, oldSwapchain);
         } catch (...) {
             swapChain_ = oldSwapchain;
@@ -98,6 +100,7 @@ namespace YATAVK {
         createInfo.imageArrayLayers = 1;
         createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         if (families[0] != families[1]) {
+            // 跨队列族共享可避免每帧显式转移 swapchain image 的所有权。
             createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
             createInfo.queueFamilyIndexCount = 2;
             createInfo.pQueueFamilyIndices = families;
@@ -168,12 +171,14 @@ namespace YATAVK {
                                        VK_PRESENT_MODE_MAILBOX_KHR) != support.presentModes.end()) {
             return VK_PRESENT_MODE_MAILBOX_KHR;
         }
+        // FIFO 是规范保证所有 surface 都支持的回退模式。
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
     VkExtent2D VulkanSwapChain::chooseExtent(const VkSurfaceCapabilitiesKHR& capabilities,
                                              const VulkanSwapChainConfig& config) const {
         if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+            // 部分窗口系统直接规定 surface 尺寸，不允许应用自行选择。
             return capabilities.currentExtent;
         }
         return VkExtent2D{

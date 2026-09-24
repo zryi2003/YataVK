@@ -14,6 +14,7 @@ namespace YATAVK {
 
         std::vector<const char*> normalizedExtensions(const VulkanDeviceRequirements& requirements) {
             std::vector<const char*> result = requirements.requiredExtensions;
+            // 有展示 surface 时，swapchain 扩展是隐含的最低需求。
             if (requirements.presentationSurface != VK_NULL_HANDLE &&
                 std::none_of(result.begin(), result.end(), [](const char* extension) {
                     return std::strcmp(extension, VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0;
@@ -67,6 +68,7 @@ namespace YATAVK {
 
     void VulkanDevice::destroy() noexcept {
         if (logicalDevice_ != VK_NULL_HANDLE) {
+            // Device 是其余封装资源的父对象，销毁前确保 GPU 不再引用它们。
             vkDeviceWaitIdle(logicalDevice_);
             vkDestroyDevice(logicalDevice_, nullptr);
         }
@@ -88,6 +90,7 @@ namespace YATAVK {
                 result.graphicsFamily = index;
             }
             if (surface_ == VK_NULL_HANDLE) {
+                // 无展示目标时复用 graphics family，仍保持索引接口完整。
                 result.presentFamily = result.graphicsFamily;
             } else {
                 VkBool32 supported = VK_FALSE;
@@ -123,6 +126,7 @@ namespace YATAVK {
                                                 const VkPhysicalDeviceFeatures& required) const {
         VkPhysicalDeviceFeatures available{};
         vkGetPhysicalDeviceFeatures(physicalDevice, &available);
+        // VkPhysicalDeviceFeatures 由连续的 VkBool32 字段组成，可逐项比较请求位。
         const auto* requiredValues = reinterpret_cast<const VkBool32*>(&required);
         const auto* availableValues = reinterpret_cast<const VkBool32*>(&available);
         constexpr size_t featureCount = sizeof(VkPhysicalDeviceFeatures) / sizeof(VkBool32);
@@ -144,6 +148,7 @@ namespace YATAVK {
         std::vector<VkPhysicalDevice> devices(count);
         checkVk(vkEnumeratePhysicalDevices(instance_, &count, devices.data()), "vkEnumeratePhysicalDevices");
 
+        // 当前策略选择第一个满足全部硬性条件的设备，不额外进行性能评分。
         for (VkPhysicalDevice candidate : devices) {
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(candidate, &properties);
@@ -164,6 +169,7 @@ namespace YATAVK {
                 continue;
             }
             if (surface_ != VK_NULL_HANDLE) {
+                // querySwapChainSupport 使用成员句柄，这里只在探测期间临时绑定候选设备。
                 physicalDevice_ = candidate;
                 const SwapChainSupportDetails support = querySwapChainSupport();
                 physicalDevice_ = VK_NULL_HANDLE;
@@ -180,6 +186,7 @@ namespace YATAVK {
 
     void VulkanDevice::createLogicalDevice(const VulkanDeviceRequirements& requirements,
                                            const std::vector<const char*>& extensions) {
+        // graphics/present 相同时只创建一条 queue create info。
         const std::set<uint32_t> uniqueFamilies{queueFamilies_.graphicsFamily.value(),
                                                 queueFamilies_.presentFamily.value()};
         constexpr float priority = 1.0f;

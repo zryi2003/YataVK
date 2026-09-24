@@ -25,7 +25,7 @@ namespace YATAVK {
         void write(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
         void flush(VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0);
 
-        // Compatibility alias retained for existing YataVK users.
+        // 兼容旧调用方式；新代码优先使用 write()。
         void writeToBuffer(void* data, VkDeviceSize size = VK_WHOLE_SIZE, VkDeviceSize offset = 0) {
             write(data, size == VK_WHOLE_SIZE ? size_ - offset : size, offset);
         }

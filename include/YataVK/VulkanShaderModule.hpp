@@ -12,6 +12,7 @@ namespace YATAVK {
 
     class VulkanShaderModule final {
     public:
+        // 输入必须是按 uint32_t 对齐的完整 SPIR-V 字节码。
         VulkanShaderModule(VulkanDevice& device, std::span<const uint32_t> spirv);
         VulkanShaderModule(VulkanDevice& device, const std::filesystem::path& spirvFile);
         ~VulkanShaderModule();

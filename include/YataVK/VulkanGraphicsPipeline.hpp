@@ -15,6 +15,7 @@ namespace YATAVK {
         const VulkanShaderModule* fragmentShader = nullptr;
         std::vector<VkVertexInputBindingDescription> vertexBindings;
         std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+        // 顺序对应 shader 中的 set 编号；句柄只在创建 pipeline layout 时读取。
         std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
         std::vector<VkPushConstantRange> pushConstants;
         VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;

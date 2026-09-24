@@ -50,6 +50,7 @@ namespace YATAVK {
                 throw std::runtime_error("Vulkan validation requested but VK_LAYER_KHRONOS_validation is unavailable");
             }
             layers.push_back(kValidationLayer);
+            // Debug messenger 的入口来自该扩展，validation layer 本身不会自动启用它。
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
         }
 
@@ -74,6 +75,7 @@ namespace YATAVK {
         createInfo.ppEnabledExtensionNames = extensions.data();
         createInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
         createInfo.ppEnabledLayerNames = layers.data();
+        // 放入 pNext 可捕获 vkCreateInstance/vkDestroyInstance 期间产生的消息。
         createInfo.pNext = config.enableValidation ? &debugInfo : nullptr;
         checkVk(vkCreateInstance(&createInfo, nullptr, &instance_), "vkCreateInstance");
 

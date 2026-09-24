@@ -14,6 +14,7 @@ namespace YATAVK {
             config.fragmentShader == nullptr) {
             throw std::invalid_argument("VulkanGraphicsPipelineConfig is incomplete");
         }
+        // Descriptor set layouts 与 push constants 共同定义 shader 可见的资源接口。
         VkPipelineLayoutCreateInfo layoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         layoutInfo.setLayoutCount = static_cast<uint32_t>(config.descriptorSetLayouts.size());
         layoutInfo.pSetLayouts = config.descriptorSetLayouts.data();
@@ -76,11 +77,13 @@ namespace YATAVK {
             blend.attachmentCount = 1;
             blend.pAttachments = &blendAttachment;
 
+            // 尺寸随 swapchain 变化，viewport/scissor 留到录制命令时设置。
             const std::array<VkDynamicState, 2> dynamicStates{VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
             VkPipelineDynamicStateCreateInfo dynamic{VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
             dynamic.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
             dynamic.pDynamicStates = dynamicStates.data();
 
+            // Dynamic Rendering 用 attachment formats 代替传统 VkRenderPass 兼容信息。
             VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
             rendering.colorAttachmentCount = 1;
             rendering.pColorAttachmentFormats = &config.colorFormat;
@@ -95,6 +98,7 @@ namespace YATAVK {
             pipelineInfo.pViewportState = &viewport;
             pipelineInfo.pRasterizationState = &rasterization;
             pipelineInfo.pMultisampleState = &multisample;
+            // 未提供深度格式时完全省略深度状态，适用于纯颜色 pass。
             pipelineInfo.pDepthStencilState = config.depthFormat == VK_FORMAT_UNDEFINED ? nullptr : &depth;
             pipelineInfo.pColorBlendState = &blend;
             pipelineInfo.pDynamicState = &dynamic;

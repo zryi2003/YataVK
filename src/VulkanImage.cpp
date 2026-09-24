@@ -14,6 +14,7 @@ namespace YATAVK {
             throw std::invalid_argument("VulkanImageConfig is incomplete");
         }
         VkImageCreateInfo imageInfo{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        // depth 大于 1 时按体纹理创建，否则使用常规 2D image。
         imageInfo.imageType = config.extent.depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
         imageInfo.extent = config.extent;
         imageInfo.mipLevels = 1;
@@ -26,6 +27,7 @@ namespace YATAVK {
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         checkVk(vkCreateImage(device_->getLogicalDevice(), &imageInfo, nullptr, &image_), "vkCreateImage");
         try {
+            // Image 仅声明用途，内存类型仍需根据驱动 requirements 选择。
             VkMemoryRequirements requirements{};
             vkGetImageMemoryRequirements(device_->getLogicalDevice(), image_, &requirements);
             VkMemoryAllocateInfo allocationInfo{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
@@ -76,6 +78,7 @@ namespace YATAVK {
         if (device_ == nullptr) {
             return;
         }
+        // view 引用 image，image 又引用 memory，按依赖顺序逆序释放。
         if (view_ != VK_NULL_HANDLE) {
             vkDestroyImageView(device_->getLogicalDevice(), view_, nullptr);
         }

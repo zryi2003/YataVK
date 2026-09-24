@@ -48,6 +48,7 @@ namespace YATAVK {
     }
 
     void VulkanDescriptorPool::reset() const {
+        // reset 会一次性回收该 pool 分配出的所有 descriptor sets。
         checkVk(vkResetDescriptorPool(device_->getLogicalDevice(), pool_, 0), "vkResetDescriptorPool");
     }
 
@@ -82,6 +83,7 @@ namespace YATAVK {
         for (const auto& [_, binding] : bindings) {
             sorted.push_back(binding);
         }
+        // 固定 binding 顺序，便于调试和复现创建参数。
         std::sort(sorted.begin(), sorted.end(),
                   [](const auto& left, const auto& right) { return left.binding < right.binding; });
         VkDescriptorSetLayoutCreateInfo createInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
@@ -185,8 +187,7 @@ namespace YATAVK {
     }
 
     void VulkanDescriptorWriter::overwrite(VkDescriptorSet set) {
-        // Store indices while the writer is assembled. Materialize Vulkan's raw
-        // pointers only after all backing vectors have reached their final size.
+        // 组装阶段只存索引；容器稳定后再生成裸指针，避免扩容留下悬空地址。
         std::vector<VkWriteDescriptorSet> writes;
         writes.reserve(pendingWrites_.size());
         for (const PendingWrite& pending : pendingWrites_) {

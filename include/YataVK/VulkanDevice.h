@@ -21,8 +21,7 @@ namespace YATAVK {
     };
 
     struct VulkanDeviceRequirements {
-        // Non-owning. The application must keep the surface alive through the
-        // device and every swapchain created from it.
+        // 非拥有句柄；必须比 device 及其创建的所有 swapchain 活得更久。
         VkSurfaceKHR presentationSurface = VK_NULL_HANDLE;
         bool requireDynamicRendering = true;
         std::vector<const char*> requiredExtensions;
@@ -69,7 +68,7 @@ namespace YATAVK {
         VkInstance instance_ = VK_NULL_HANDLE;
         VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
         VkDevice logicalDevice_ = VK_NULL_HANDLE;
-        VkSurfaceKHR surface_ = VK_NULL_HANDLE; // Application-owned.
+        VkSurfaceKHR surface_ = VK_NULL_HANDLE; // 由应用持有。
         QueueFamilyIndices queueFamilies_{};
         VkQueue graphicsQueue_ = VK_NULL_HANDLE;
         VkQueue presentQueue_ = VK_NULL_HANDLE;

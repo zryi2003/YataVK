@@ -11,6 +11,7 @@
 namespace YATAVK {
 
     struct VulkanFrameToken {
+        // 仅在对应的 beginFrame/endFrame 区间内有效。
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
         uint32_t imageIndex = 0;
         uint32_t frameIndex = 0;
@@ -43,6 +44,7 @@ namespace YATAVK {
 
     private:
         struct FrameResources {
+            // 每个并行帧独占命令池和同步原语，避免跨帧重置仍在执行的资源。
             VkCommandPool commandPool = VK_NULL_HANDLE;
             VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
             VkSemaphore imageAvailable = VK_NULL_HANDLE;

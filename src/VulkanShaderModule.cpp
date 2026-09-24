@@ -23,6 +23,7 @@ namespace YATAVK {
             throw std::runtime_error("Invalid SPIR-V byte count: " + spirvFile.string());
         }
         stream.seekg(0);
+        // 以 words 存储可同时满足 VkShaderModule 对大小和对齐的要求。
         std::vector<uint32_t> words(static_cast<size_t>(byteCount) / sizeof(uint32_t));
         stream.read(reinterpret_cast<char*>(words.data()), byteCount);
         if (!stream) {

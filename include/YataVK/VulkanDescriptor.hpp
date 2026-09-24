@@ -74,6 +74,7 @@ namespace YATAVK {
 
     class VulkanDescriptorWriter final {
     public:
+        // writer 不拥有 device、pool 和 layout，它们必须覆盖 writer 的生命周期。
         VulkanDescriptorWriter(VulkanDevice& device, const VulkanDescriptorPool& pool,
                                VulkanDescriptorSetLayout& layout);
         VulkanDescriptorWriter& writeBuffer(uint32_t binding, const VkDescriptorBufferInfo& bufferInfo);

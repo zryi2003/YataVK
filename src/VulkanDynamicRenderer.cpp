@@ -19,6 +19,7 @@ namespace YATAVK {
         const VulkanFrameToken token = *result.frame;
         const bool initialized = imageInitialized_[token.imageIndex];
 
+        // 第一次取得的图像可丢弃旧内容；之后则从展示布局切回附件布局。
         VkImageMemoryBarrier2 colorBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
         colorBarrier.srcStageMask = initialized ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_NONE;
         colorBarrier.srcAccessMask = VK_ACCESS_2_NONE;
@@ -33,6 +34,7 @@ namespace YATAVK {
         colorBarrier.subresourceRange.levelCount = 1;
         colorBarrier.subresourceRange.layerCount = 1;
 
+        // 深度每帧都会 clear，使用 UNDEFINED 表示无需保留上一帧内容。
         VkImageMemoryBarrier2 depthBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
         depthBarrier.srcStageMask = VK_PIPELINE_STAGE_2_NONE;
         depthBarrier.srcAccessMask = VK_ACCESS_2_NONE;
@@ -75,6 +77,7 @@ namespace YATAVK {
         renderingInfo.colorAttachmentCount = 1;
         renderingInfo.pColorAttachments = &colorAttachment;
         renderingInfo.pDepthAttachment = &depthAttachment;
+        // beginFrame 返回时已经处于 dynamic rendering 区间内。
         vkCmdBeginRendering(token.commandBuffer, &renderingInfo);
 
         imageInitialized_[token.imageIndex] = true;
@@ -84,6 +87,7 @@ namespace YATAVK {
     VulkanFrameStatus VulkanDynamicRenderer::endFrame(const VulkanRenderingFrame& frame) {
         vkCmdEndRendering(frame.token.commandBuffer);
 
+        // 展示引擎只接受 PRESENT_SRC_KHR，提交前显式完成布局交接。
         VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
         barrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         barrier.srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
@@ -107,6 +111,7 @@ namespace YATAVK {
 
     void VulkanDynamicRenderer::recreate(const VulkanSwapChainConfig& config) {
         scheduler_.waitIdle();
+        // 深度图尺寸依赖 swapchain extent，必须随交换链一起重建。
         depthImages_.clear();
         swapChain_.recreate(config);
         rebuildDepthImages();
