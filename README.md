@@ -14,6 +14,10 @@ The default `YataVK` CMake target builds only:
 
 The library requires Vulkan 1.4. `VulkanDynamicRenderer` uses `vkCmdBeginRendering()` and synchronization2; it does not create a `VkRenderPass` or `VkFramebuffer`.
 
+## Memory allocation
+
+By default, buffers and images use direct Vulkan memory allocation. Set `YATAVK_ENABLE_VMA=ON` to use VMA instead; the application must provide `<vma/vk_mem_alloc.h>` on the include path. YataVK does not download or locate VMA. CMake reports the selected memory backend during configuration. The VMA implementation is compiled once through `YataVK.cpp`.
+
 ## Surface ownership
 
 YataVK does not create, destroy, or own a `VkSurfaceKHR`. The application creates the platform surface and keeps it alive until all YataVK devices and swapchains using it are destroyed. Pass the non-owning handle through `VulkanDeviceRequirements::presentationSurface`:
@@ -48,7 +52,7 @@ The following files belong to the old render-pass path and live in `YATAVK::Lega
 - `VulkanRenderPass.hpp`;
 - `VulkanSampler.h/.cpp`.
 
-This path is known broken, unsupported, and intentionally excluded from the default target. Setting `YATAVK_BUILD_LEGACY=ON` fails configuration instead of suggesting that the code is usable. `YataVK.cpp`, the old source-aggregation entry point, is also unsupported and must not be compiled. The legacy sources are retained only for archaeology until they are deleted or rewritten.
+This path is known broken and unsupported. `YataVK.cpp` is the supported source-aggregation entry point: it includes the modern implementation by default and includes the legacy `.cpp` files only when `YATAVK_BUILD_LEGACY` is defined. CMake still rejects `YATAVK_BUILD_LEGACY=ON` at configuration time instead of suggesting that the legacy path is usable. The legacy sources are retained only for archaeology until they are deleted or rewritten.
 
 ## ImGui
 

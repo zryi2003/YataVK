@@ -5,6 +5,10 @@
 #include <vector>
 #include <vulkan/vulkan.h>
 
+#ifdef YATAVK_ENABLE_VMA
+#include <vma/vk_mem_alloc.h>
+#endif
+
 namespace YATAVK {
 
     struct QueueFamilyIndices {
@@ -48,6 +52,9 @@ namespace YATAVK {
         [[nodiscard]] uint32_t getPresentQueueFamily() const { return queueFamilies_.presentFamily.value(); }
         [[nodiscard]] QueueFamilyIndices getQueueFamilyIndices() const { return queueFamilies_; }
         [[nodiscard]] bool dynamicRenderingEnabled() const { return dynamicRenderingEnabled_; }
+#ifdef YATAVK_ENABLE_VMA
+        [[nodiscard]] VmaAllocator getVmaAllocator() const { return allocator_; }
+#endif
 
         [[nodiscard]] uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const;
         [[nodiscard]] SwapChainSupportDetails querySwapChainSupport() const;
@@ -68,6 +75,9 @@ namespace YATAVK {
         VkInstance instance_ = VK_NULL_HANDLE;
         VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
         VkDevice logicalDevice_ = VK_NULL_HANDLE;
+#ifdef YATAVK_ENABLE_VMA
+        VmaAllocator allocator_ = VK_NULL_HANDLE;
+#endif
         VkSurfaceKHR surface_ = VK_NULL_HANDLE; // 由应用持有。
         QueueFamilyIndices queueFamilies_{};
         VkQueue graphicsQueue_ = VK_NULL_HANDLE;

@@ -2,18 +2,15 @@ cmake_minimum_required(VERSION 3.20)
 
 find_package(Vulkan 1.4 REQUIRED)
 
-add_library(YataVK STATIC
-    src/VulkanBuffer.cpp
-    src/VulkanDescriptor.cpp
-    src/VulkanDevice.cpp
-    src/VulkanDynamicRenderer.cpp
-    src/VulkanFrameScheduler.cpp
-    src/VulkanGraphicsPipeline.cpp
-    src/VulkanImage.cpp
-    src/VulkanInstance.cpp
-    src/VulkanShaderModule.cpp
-    src/VulkanSwapChain.cpp
-)
+add_library(YataVK STATIC YataVK.cpp)
+
+option(YATAVK_ENABLE_VMA "Use VMA for buffer and image allocations" OFF)
+if (YATAVK_ENABLE_VMA)
+    target_compile_definitions(YataVK PUBLIC YATAVK_ENABLE_VMA=1)
+    message(STATUS "YataVK memory backend: VMA")
+else()
+    message(STATUS "YataVK memory backend: manual Vulkan allocation")
+endif()
 
 option(YATAVK_BUILD_LEGACY "Build the unsupported legacy render-pass path" OFF)
 if (YATAVK_BUILD_LEGACY)

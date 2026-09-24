@@ -28,9 +28,22 @@ namespace YATAVK {
 
     VulkanDevice::VulkanDevice(VkInstance instance, const VulkanDeviceRequirements& requirements)
         : instance_(instance), surface_(requirements.presentationSurface) {
-        const std::vector<const char*> extensions = normalizedExtensions(requirements);
-        selectPhysicalDevice(requirements, extensions);
-        createLogicalDevice(requirements, extensions);
+        try {
+            const std::vector<const char*> extensions = normalizedExtensions(requirements);
+            selectPhysicalDevice(requirements, extensions);
+            createLogicalDevice(requirements, extensions);
+#ifdef YATAVK_ENABLE_VMA
+            VmaAllocatorCreateInfo allocatorInfo{};
+            allocatorInfo.instance = instance_;
+            allocatorInfo.physicalDevice = physicalDevice_;
+            allocatorInfo.device = logicalDevice_;
+            allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_4;
+            checkVk(vmaCreateAllocator(&allocatorInfo, &allocator_), "vmaCreateAllocator");
+#endif
+        } catch (...) {
+            destroy();
+            throw;
+        }
     }
 
     VulkanDevice::VulkanDevice(VkInstance instance, VkSurfaceKHR surface)
@@ -45,6 +58,9 @@ namespace YATAVK {
         : instance_(std::exchange(other.instance_, VK_NULL_HANDLE)),
           physicalDevice_(std::exchange(other.physicalDevice_, VK_NULL_HANDLE)),
           logicalDevice_(std::exchange(other.logicalDevice_, VK_NULL_HANDLE)),
+#ifdef YATAVK_ENABLE_VMA
+          allocator_(std::exchange(other.allocator_, VK_NULL_HANDLE)),
+#endif
           surface_(std::exchange(other.surface_, VK_NULL_HANDLE)), queueFamilies_(other.queueFamilies_),
           graphicsQueue_(std::exchange(other.graphicsQueue_, VK_NULL_HANDLE)),
           presentQueue_(std::exchange(other.presentQueue_, VK_NULL_HANDLE)),
@@ -57,6 +73,9 @@ namespace YATAVK {
             instance_ = std::exchange(other.instance_, VK_NULL_HANDLE);
             physicalDevice_ = std::exchange(other.physicalDevice_, VK_NULL_HANDLE);
             logicalDevice_ = std::exchange(other.logicalDevice_, VK_NULL_HANDLE);
+#ifdef YATAVK_ENABLE_VMA
+            allocator_ = std::exchange(other.allocator_, VK_NULL_HANDLE);
+#endif
             surface_ = std::exchange(other.surface_, VK_NULL_HANDLE);
             queueFamilies_ = other.queueFamilies_;
             graphicsQueue_ = std::exchange(other.graphicsQueue_, VK_NULL_HANDLE);
@@ -70,6 +89,12 @@ namespace YATAVK {
         if (logicalDevice_ != VK_NULL_HANDLE) {
             // Device 是其余封装资源的父对象，销毁前确保 GPU 不再引用它们。
             vkDeviceWaitIdle(logicalDevice_);
+#ifdef YATAVK_ENABLE_VMA
+            if (allocator_ != VK_NULL_HANDLE) {
+                vmaDestroyAllocator(allocator_);
+                allocator_ = VK_NULL_HANDLE;
+            }
+#endif
             vkDestroyDevice(logicalDevice_, nullptr);
         }
         logicalDevice_ = VK_NULL_HANDLE;

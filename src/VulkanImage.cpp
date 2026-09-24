@@ -25,8 +25,19 @@ namespace YATAVK {
         imageInfo.usage = config.usage;
         imageInfo.samples = config.samples;
         imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        checkVk(vkCreateImage(device_->getLogicalDevice(), &imageInfo, nullptr, &image_), "vkCreateImage");
         try {
+#ifdef YATAVK_ENABLE_VMA
+            VmaAllocationCreateInfo allocationInfo{};
+            allocationInfo.usage = VMA_MEMORY_USAGE_AUTO;
+            allocationInfo.requiredFlags = config.memoryProperties;
+            if ((config.memoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0) {
+                allocationInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+            }
+            checkVk(vmaCreateImage(device_->getVmaAllocator(), &imageInfo, &allocationInfo, &image_, &allocation_,
+                                   nullptr),
+                    "vmaCreateImage");
+#else
+            checkVk(vkCreateImage(device_->getLogicalDevice(), &imageInfo, nullptr, &image_), "vkCreateImage");
             // Image 仅声明用途，内存类型仍需根据驱动 requirements 选择。
             VkMemoryRequirements requirements{};
             vkGetImageMemoryRequirements(device_->getLogicalDevice(), image_, &requirements);
@@ -37,6 +48,7 @@ namespace YATAVK {
             checkVk(vkAllocateMemory(device_->getLogicalDevice(), &allocationInfo, nullptr, &memory_),
                     "vkAllocateMemory(image)");
             checkVk(vkBindImageMemory(device_->getLogicalDevice(), image_, memory_, 0), "vkBindImageMemory");
+#endif
 
             VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
             viewInfo.image = image_;
@@ -58,7 +70,12 @@ namespace YATAVK {
 
     VulkanImage::VulkanImage(VulkanImage&& other) noexcept
         : device_(std::exchange(other.device_, nullptr)), config_(other.config_),
-          image_(std::exchange(other.image_, VK_NULL_HANDLE)), memory_(std::exchange(other.memory_, VK_NULL_HANDLE)),
+          image_(std::exchange(other.image_, VK_NULL_HANDLE)),
+#ifdef YATAVK_ENABLE_VMA
+          allocation_(std::exchange(other.allocation_, VK_NULL_HANDLE)),
+#else
+          memory_(std::exchange(other.memory_, VK_NULL_HANDLE)),
+#endif
           view_(std::exchange(other.view_, VK_NULL_HANDLE)) {
     }
 
@@ -68,7 +85,11 @@ namespace YATAVK {
             device_ = std::exchange(other.device_, nullptr);
             config_ = other.config_;
             image_ = std::exchange(other.image_, VK_NULL_HANDLE);
+#ifdef YATAVK_ENABLE_VMA
+            allocation_ = std::exchange(other.allocation_, VK_NULL_HANDLE);
+#else
             memory_ = std::exchange(other.memory_, VK_NULL_HANDLE);
+#endif
             view_ = std::exchange(other.view_, VK_NULL_HANDLE);
         }
         return *this;
@@ -82,15 +103,24 @@ namespace YATAVK {
         if (view_ != VK_NULL_HANDLE) {
             vkDestroyImageView(device_->getLogicalDevice(), view_, nullptr);
         }
+#ifdef YATAVK_ENABLE_VMA
+        if (allocation_ != VK_NULL_HANDLE) {
+            vmaDestroyImage(device_->getVmaAllocator(), image_, allocation_);
+        } else if (image_ != VK_NULL_HANDLE) {
+            vkDestroyImage(device_->getLogicalDevice(), image_, nullptr);
+        }
+        allocation_ = VK_NULL_HANDLE;
+#else
         if (image_ != VK_NULL_HANDLE) {
             vkDestroyImage(device_->getLogicalDevice(), image_, nullptr);
         }
         if (memory_ != VK_NULL_HANDLE) {
             vkFreeMemory(device_->getLogicalDevice(), memory_, nullptr);
         }
+        memory_ = VK_NULL_HANDLE;
+#endif
         view_ = VK_NULL_HANDLE;
         image_ = VK_NULL_HANDLE;
-        memory_ = VK_NULL_HANDLE;
         device_ = nullptr;
     }
 

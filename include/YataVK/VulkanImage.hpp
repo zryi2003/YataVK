@@ -41,7 +41,11 @@ namespace YATAVK {
         VulkanDevice* device_ = nullptr;
         VulkanImageConfig config_{};
         VkImage image_ = VK_NULL_HANDLE;
+#ifdef YATAVK_ENABLE_VMA
+        VmaAllocation allocation_ = VK_NULL_HANDLE;
+#else
         VkDeviceMemory memory_ = VK_NULL_HANDLE;
+#endif
         VkImageView view_ = VK_NULL_HANDLE;
     };
 
