@@ -6,7 +6,6 @@
 #include <cstring>
 #include <set>
 #include <stdexcept>
-#include <utility>
 
 namespace YATAVK {
 
@@ -52,37 +51,6 @@ namespace YATAVK {
 
     VulkanDevice::~VulkanDevice() {
         destroy();
-    }
-
-    VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
-        : instance_(std::exchange(other.instance_, VK_NULL_HANDLE)),
-          physicalDevice_(std::exchange(other.physicalDevice_, VK_NULL_HANDLE)),
-          logicalDevice_(std::exchange(other.logicalDevice_, VK_NULL_HANDLE)),
-#ifdef YATAVK_ENABLE_VMA
-          allocator_(std::exchange(other.allocator_, VK_NULL_HANDLE)),
-#endif
-          surface_(std::exchange(other.surface_, VK_NULL_HANDLE)), queueFamilies_(other.queueFamilies_),
-          graphicsQueue_(std::exchange(other.graphicsQueue_, VK_NULL_HANDLE)),
-          presentQueue_(std::exchange(other.presentQueue_, VK_NULL_HANDLE)),
-          dynamicRenderingEnabled_(other.dynamicRenderingEnabled_) {
-    }
-
-    VulkanDevice& VulkanDevice::operator=(VulkanDevice&& other) noexcept {
-        if (this != &other) {
-            destroy();
-            instance_ = std::exchange(other.instance_, VK_NULL_HANDLE);
-            physicalDevice_ = std::exchange(other.physicalDevice_, VK_NULL_HANDLE);
-            logicalDevice_ = std::exchange(other.logicalDevice_, VK_NULL_HANDLE);
-#ifdef YATAVK_ENABLE_VMA
-            allocator_ = std::exchange(other.allocator_, VK_NULL_HANDLE);
-#endif
-            surface_ = std::exchange(other.surface_, VK_NULL_HANDLE);
-            queueFamilies_ = other.queueFamilies_;
-            graphicsQueue_ = std::exchange(other.graphicsQueue_, VK_NULL_HANDLE);
-            presentQueue_ = std::exchange(other.presentQueue_, VK_NULL_HANDLE);
-            dynamicRenderingEnabled_ = other.dynamicRenderingEnabled_;
-        }
-        return *this;
     }
 
     void VulkanDevice::destroy() noexcept {

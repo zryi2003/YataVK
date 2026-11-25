@@ -28,6 +28,9 @@ namespace YATAVK {
 
         [[nodiscard]] VkDescriptorPool getHandle() const { return pool_; }
         [[nodiscard]] bool allocate(VkDescriptorSetLayout layout, VkDescriptorSet& set) const;
+        // 同上，但通过 result 返回原始 VkResult：OUT_OF_POOL_MEMORY / FRAGMENTED_POOL 可通过扩容或 reset 恢复，
+        // 其余错误（主机/设备内存不足、device lost）应视为致命。
+        [[nodiscard]] bool allocate(VkDescriptorSetLayout layout, VkDescriptorSet& set, VkResult& result) const;
         void reset() const;
 
     private:
@@ -80,6 +83,8 @@ namespace YATAVK {
         VulkanDescriptorWriter& writeBuffer(uint32_t binding, const VkDescriptorBufferInfo& bufferInfo);
         VulkanDescriptorWriter& writeImage(uint32_t binding, const VkDescriptorImageInfo& imageInfo);
         [[nodiscard]] bool build(VkDescriptorSet& set);
+        // 同上，但通过 result 返回 pool 分配的原始 VkResult，语义见 VulkanDescriptorPool::allocate。
+        [[nodiscard]] bool build(VkDescriptorSet& set, VkResult& result);
         void overwrite(VkDescriptorSet set);
 
     private:

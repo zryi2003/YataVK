@@ -25,7 +25,8 @@ namespace YATAVK {
     VulkanSwapChain::VulkanSwapChain(VulkanSwapChain&& other) noexcept
         : device_(std::exchange(other.device_, nullptr)), swapChain_(std::exchange(other.swapChain_, VK_NULL_HANDLE)),
           imageFormat_(other.imageFormat_), colorSpace_(other.colorSpace_), extent_(other.extent_),
-          images_(std::move(other.images_)), imageViews_(std::move(other.imageViews_)), generation_(other.generation_) {
+          images_(std::move(other.images_)), imageViews_(std::move(other.imageViews_)),
+          renderFinished_(std::move(other.renderFinished_)), generation_(other.generation_) {
     }
 
     VulkanSwapChain& VulkanSwapChain::operator=(VulkanSwapChain&& other) noexcept {
@@ -38,6 +39,7 @@ namespace YATAVK {
             extent_ = other.extent_;
             images_ = std::move(other.images_);
             imageViews_ = std::move(other.imageViews_);
+            renderFinished_ = std::move(other.renderFinished_);
             generation_ = other.generation_;
         }
         return *this;
@@ -50,19 +52,30 @@ namespace YATAVK {
         }
         device_->waitIdle();
         const VkSwapchainKHR oldSwapchain = swapChain_;
-        destroyImageViews();
+        destroyImageResources();
         swapChain_ = VK_NULL_HANDLE;
         try {
-            // oldSwapchain 让驱动复用资源；创建失败时仍恢复旧句柄供析构。
+            // oldSwapchain 让驱动复用资源。create() 失败时自身会清理新建的部分。
             create(config, oldSwapchain);
         } catch (...) {
-            swapChain_ = oldSwapchain;
+            // 以非空 oldSwapchain 调用 vkCreateSwapchainKHR 后，旧链即使创建失败也已 retired：
+            // 不可再使用，也不可再次作为 oldSwapchain 传入（VUID-VkSwapchainCreateInfoKHR-oldSwapchain-01933）。
+            // 因此统一销毁，让对象回到可再次 recreate() 的空状态，而不是“有句柄但没有 image”的半成品。
+            if (oldSwapchain != VK_NULL_HANDLE) {
+                vkDestroySwapchainKHR(device_->getLogicalDevice(), oldSwapchain, nullptr);
+            }
             throw;
         }
-        vkDestroySwapchainKHR(device_->getLogicalDevice(), oldSwapchain, nullptr);
+        if (oldSwapchain != VK_NULL_HANDLE) {
+            vkDestroySwapchainKHR(device_->getLogicalDevice(), oldSwapchain, nullptr);
+        }
     }
 
     VkResult VulkanSwapChain::acquireNextImage(VkSemaphore imageAvailable, uint32_t& imageIndex) const {
+        // 空状态（recreate 失败后）按 out-of-date 处理，调用方走既有的重建路径。
+        if (swapChain_ == VK_NULL_HANDLE) {
+            return VK_ERROR_OUT_OF_DATE_KHR;
+        }
         return vkAcquireNextImageKHR(device_->getLogicalDevice(), swapChain_, UINT64_MAX, imageAvailable,
                                      VK_NULL_HANDLE, &imageIndex);
     }
@@ -115,43 +128,61 @@ namespace YATAVK {
         checkVk(vkCreateSwapchainKHR(device_->getLogicalDevice(), &createInfo, nullptr, &swapChain_),
                 "vkCreateSwapchainKHR");
 
-        imageFormat_ = surfaceFormat.format;
-        colorSpace_ = surfaceFormat.colorSpace;
-        extent_ = extent;
-        checkVk(vkGetSwapchainImagesKHR(device_->getLogicalDevice(), swapChain_, &imageCount, nullptr),
-                "vkGetSwapchainImagesKHR");
-        images_.resize(imageCount);
-        checkVk(vkGetSwapchainImagesKHR(device_->getLogicalDevice(), swapChain_, &imageCount, images_.data()),
-                "vkGetSwapchainImagesKHR");
-        imageViews_.resize(images_.size(), VK_NULL_HANDLE);
-        for (size_t index = 0; index < images_.size(); ++index) {
-            VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            viewInfo.image = images_[index];
-            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            viewInfo.format = imageFormat_;
-            viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            viewInfo.subresourceRange.levelCount = 1;
-            viewInfo.subresourceRange.layerCount = 1;
-            checkVk(vkCreateImageView(device_->getLogicalDevice(), &viewInfo, nullptr, &imageViews_[index]),
-                    "vkCreateImageView(swapchain)");
+        try {
+            imageFormat_ = surfaceFormat.format;
+            colorSpace_ = surfaceFormat.colorSpace;
+            extent_ = extent;
+            checkVk(vkGetSwapchainImagesKHR(device_->getLogicalDevice(), swapChain_, &imageCount, nullptr),
+                    "vkGetSwapchainImagesKHR");
+            images_.resize(imageCount);
+            checkVk(vkGetSwapchainImagesKHR(device_->getLogicalDevice(), swapChain_, &imageCount, images_.data()),
+                    "vkGetSwapchainImagesKHR");
+            imageViews_.resize(images_.size(), VK_NULL_HANDLE);
+            for (size_t index = 0; index < images_.size(); ++index) {
+                VkImageViewCreateInfo viewInfo{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+                viewInfo.image = images_[index];
+                viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                viewInfo.format = imageFormat_;
+                viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                viewInfo.subresourceRange.levelCount = 1;
+                viewInfo.subresourceRange.layerCount = 1;
+                checkVk(vkCreateImageView(device_->getLogicalDevice(), &viewInfo, nullptr, &imageViews_[index]),
+                        "vkCreateImageView(swapchain)");
+            }
+            renderFinished_.resize(images_.size(), VK_NULL_HANDLE);
+            for (VkSemaphore& semaphore : renderFinished_) {
+                VkSemaphoreCreateInfo semaphoreInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+                checkVk(vkCreateSemaphore(device_->getLogicalDevice(), &semaphoreInfo, nullptr, &semaphore),
+                        "vkCreateSemaphore(renderFinished)");
+            }
+        } catch (...) {
+            // 构造函数中抛出时析构函数不会运行，必须在此回收新建的 swapchain / view / semaphore。
+            destroy();
+            throw;
         }
         ++generation_;
     }
 
-    void VulkanSwapChain::destroyImageViews() noexcept {
+    void VulkanSwapChain::destroyImageResources() noexcept {
         if (device_ != nullptr) {
+            for (VkSemaphore semaphore : renderFinished_) {
+                if (semaphore != VK_NULL_HANDLE) {
+                    vkDestroySemaphore(device_->getLogicalDevice(), semaphore, nullptr);
+                }
+            }
             for (VkImageView view : imageViews_) {
                 if (view != VK_NULL_HANDLE) {
                     vkDestroyImageView(device_->getLogicalDevice(), view, nullptr);
                 }
             }
         }
+        renderFinished_.clear();
         imageViews_.clear();
         images_.clear();
     }
 
     void VulkanSwapChain::destroy() noexcept {
-        destroyImageViews();
+        destroyImageResources();
         if (device_ != nullptr && swapChain_ != VK_NULL_HANDLE) {
             vkDestroySwapchainKHR(device_->getLogicalDevice(), swapChain_, nullptr);
         }

@@ -30,8 +30,6 @@ namespace YATAVK {
                 VkSemaphoreCreateInfo semaphoreInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
                 checkVk(vkCreateSemaphore(device_->getLogicalDevice(), &semaphoreInfo, nullptr, &frame.imageAvailable),
                         "vkCreateSemaphore(imageAvailable)");
-                checkVk(vkCreateSemaphore(device_->getLogicalDevice(), &semaphoreInfo, nullptr, &frame.renderFinished),
-                        "vkCreateSemaphore(renderFinished)");
 
                 VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
                 // 首帧没有待等待的提交，初始置为 signaled 可直接进入录制。
@@ -99,6 +97,7 @@ namespace YATAVK {
         FrameResources& frame = frames_[currentFrame_];
         checkVk(vkEndCommandBuffer(frame.commandBuffer), "vkEndCommandBuffer");
 
+        const VkSemaphore renderFinished = swapChain.getRenderFinishedSemaphore(token.imageIndex);
         // 等到颜色附件阶段才消费 acquire semaphore，避免阻塞更早的流水线阶段。
         constexpr VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
         VkSubmitInfo submitInfo{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -108,10 +107,10 @@ namespace YATAVK {
         submitInfo.commandBufferCount = 1;
         submitInfo.pCommandBuffers = &frame.commandBuffer;
         submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = &frame.renderFinished;
+        submitInfo.pSignalSemaphores = &renderFinished;
         checkVk(vkQueueSubmit(device_->getGraphicsQueue(), 1, &submitInfo, frame.inFlight), "vkQueueSubmit");
 
-        const VkResult presentResult = swapChain.present(token.imageIndex, frame.renderFinished);
+        const VkResult presentResult = swapChain.present(token.imageIndex, renderFinished);
         // present 即使要求重建，当前提交也已成立，因此仍推进帧槽位。
         currentFrame_ = (currentFrame_ + 1) % static_cast<uint32_t>(frames_.size());
         if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR) {
@@ -133,9 +132,6 @@ namespace YATAVK {
         for (FrameResources& frame : frames_) {
             if (frame.inFlight != VK_NULL_HANDLE) {
                 vkDestroyFence(device_->getLogicalDevice(), frame.inFlight, nullptr);
-            }
-            if (frame.renderFinished != VK_NULL_HANDLE) {
-                vkDestroySemaphore(device_->getLogicalDevice(), frame.renderFinished, nullptr);
             }
             if (frame.imageAvailable != VK_NULL_HANDLE) {
                 vkDestroySemaphore(device_->getLogicalDevice(), frame.imageAvailable, nullptr);

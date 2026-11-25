@@ -40,8 +40,10 @@ namespace YATAVK {
 
         VulkanDevice(const VulkanDevice&) = delete;
         VulkanDevice& operator=(const VulkanDevice&) = delete;
-        VulkanDevice(VulkanDevice&& other) noexcept;
-        VulkanDevice& operator=(VulkanDevice&& other) noexcept;
+        // 所有派生资源（swapchain、buffer、pipeline...）都保存 VulkanDevice*，device 必须保持固定地址，
+        // 因此禁止移动。需要延迟构造用 std::optional::emplace，需要转移所有权用 std::unique_ptr。
+        VulkanDevice(VulkanDevice&&) = delete;
+        VulkanDevice& operator=(VulkanDevice&&) = delete;
 
         [[nodiscard]] VkDevice getLogicalDevice() const { return logicalDevice_; }
         [[nodiscard]] VkPhysicalDevice getPhysicalDevice() const { return physicalDevice_; }

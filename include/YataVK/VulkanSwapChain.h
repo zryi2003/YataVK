@@ -36,13 +36,18 @@ namespace YATAVK {
         [[nodiscard]] VkColorSpaceKHR getColorSpace() const { return colorSpace_; }
         [[nodiscard]] const std::vector<VkImage>& getImages() const { return images_; }
         [[nodiscard]] const std::vector<VkImageView>& getImageViews() const { return imageViews_; }
+        // 提交完成信号，按 swapchain image 索引而非按并行帧：acquire 返回某张 image，
+        // 即保证上一次使用该 image 的 present 已不再占用对应 semaphore，复用才是安全的。
+        [[nodiscard]] VkSemaphore getRenderFinishedSemaphore(uint32_t imageIndex) const {
+            return renderFinished_.at(imageIndex);
+        }
         [[nodiscard]] uint32_t imageCount() const { return static_cast<uint32_t>(images_.size()); }
         // 每次成功创建或重建后递增，可用于识别依赖资源是否过期。
         [[nodiscard]] uint64_t generation() const { return generation_; }
 
     private:
         void create(const VulkanSwapChainConfig& config, VkSwapchainKHR oldSwapchain);
-        void destroyImageViews() noexcept;
+        void destroyImageResources() noexcept;
         void destroy() noexcept;
         [[nodiscard]] VkSurfaceFormatKHR chooseSurfaceFormat(const SwapChainSupportDetails& support) const;
         [[nodiscard]] VkPresentModeKHR choosePresentMode(const SwapChainSupportDetails& support,
@@ -57,6 +62,7 @@ namespace YATAVK {
         VkExtent2D extent_{};
         std::vector<VkImage> images_;
         std::vector<VkImageView> imageViews_;
+        std::vector<VkSemaphore> renderFinished_;
         uint64_t generation_ = 0;
     };
 

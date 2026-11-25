@@ -19,7 +19,7 @@ namespace YATAVK {
     public:
         VulkanDynamicRenderer(VulkanDevice& device, const VulkanSwapChainConfig& swapChainConfig,
                               uint32_t framesInFlight = 2, VkFormat depthFormat = VK_FORMAT_D32_SFLOAT);
-        ~VulkanDynamicRenderer() = default;
+        ~VulkanDynamicRenderer();
 
         VulkanDynamicRenderer(const VulkanDynamicRenderer&) = delete;
         VulkanDynamicRenderer& operator=(const VulkanDynamicRenderer&) = delete;

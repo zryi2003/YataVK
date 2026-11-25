@@ -48,7 +48,7 @@ namespace YATAVK {
             VkCommandPool commandPool = VK_NULL_HANDLE;
             VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
             VkSemaphore imageAvailable = VK_NULL_HANDLE;
-            VkSemaphore renderFinished = VK_NULL_HANDLE;
+            // renderFinished 由 VulkanSwapChain 按 image 持有，不在此处按并行帧分配。
             VkFence inFlight = VK_NULL_HANDLE;
         };
 

@@ -1,6 +1,7 @@
 #include "YataVK/VulkanDynamicRenderer.hpp"
 
 #include <array>
+#include <utility>
 
 namespace YATAVK {
 
@@ -11,7 +12,20 @@ namespace YATAVK {
         rebuildDepthImages();
     }
 
+    VulkanDynamicRenderer::~VulkanDynamicRenderer() {
+        // 成员按声明逆序析构：depthImages_ 会先于 scheduler_（其析构才 waitIdle）被销毁。
+        // 这里先等设备空闲，保证在途帧不再引用深度图。析构不能抛异常，故直接调用并忽略返回值。
+        if (device_ != nullptr && device_->getLogicalDevice() != VK_NULL_HANDLE) {
+            vkDeviceWaitIdle(device_->getLogicalDevice());
+        }
+    }
+
     std::optional<VulkanRenderingFrame> VulkanDynamicRenderer::beginFrame(const VkClearColorValue& clearColor) {
+        // 上次 recreate 中途失败时深度图与 swapchain 不匹配；必须在 acquire 之前拒绝，
+        // 否则已 acquire 的图像和 imageAvailable semaphore 会悬空。
+        if (depthImages_.size() != swapChain_.imageCount()) {
+            return std::nullopt;
+        }
         VulkanBeginFrameResult result = scheduler_.beginFrame(swapChain_);
         if (result.status != VulkanFrameStatus::Ready || !result.frame.has_value()) {
             return std::nullopt;
@@ -21,7 +35,9 @@ namespace YATAVK {
 
         // 第一次取得的图像可丢弃旧内容；之后则从展示布局切回附件布局。
         VkImageMemoryBarrier2 colorBarrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-        colorBarrier.srcStageMask = initialized ? VK_PIPELINE_STAGE_2_NONE : VK_PIPELINE_STAGE_2_NONE;
+        // srcStage 必须覆盖提交时等待 imageAvailable 的阶段（COLOR_ATTACHMENT_OUTPUT），
+        // 布局转换才会排在 acquire 之后；srcAccess 为 NONE（无需可用性操作）。
+        colorBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         colorBarrier.srcAccessMask = VK_ACCESS_2_NONE;
         colorBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
         colorBarrier.dstAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
@@ -118,15 +134,17 @@ namespace YATAVK {
     }
 
     void VulkanDynamicRenderer::rebuildDepthImages() {
-        depthImages_.clear();
-        depthImages_.reserve(swapChain_.imageCount());
+        std::vector<VulkanImage> images;
+        images.reserve(swapChain_.imageCount());
         const VkExtent2D extent = swapChain_.getExtent();
         for (uint32_t index = 0; index < swapChain_.imageCount(); ++index) {
-            depthImages_.emplace_back(*device_, VulkanImageConfig{.extent = VkExtent3D{extent.width, extent.height, 1},
+            images.emplace_back(*device_, VulkanImageConfig{.extent = VkExtent3D{extent.width, extent.height, 1},
                                                                   .format = depthFormat_,
                                                                   .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
                                                                   .aspect = VK_IMAGE_ASPECT_DEPTH_BIT});
         }
+        // 全部创建成功后一次性提交；中途失败则 depthImages_ 保持为空，beginFrame 会拒绝开始新帧。
+        depthImages_ = std::move(images);
         imageInitialized_.assign(swapChain_.imageCount(), false);
     }
 

@@ -40,11 +40,17 @@ namespace YATAVK {
     }
 
     bool VulkanDescriptorPool::allocate(VkDescriptorSetLayout layout, VkDescriptorSet& set) const {
+        VkResult result = VK_SUCCESS;
+        return allocate(layout, set, result);
+    }
+
+    bool VulkanDescriptorPool::allocate(VkDescriptorSetLayout layout, VkDescriptorSet& set, VkResult& result) const {
         VkDescriptorSetAllocateInfo allocationInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         allocationInfo.descriptorPool = pool_;
         allocationInfo.descriptorSetCount = 1;
         allocationInfo.pSetLayouts = &layout;
-        return vkAllocateDescriptorSets(device_->getLogicalDevice(), &allocationInfo, &set) == VK_SUCCESS;
+        result = vkAllocateDescriptorSets(device_->getLogicalDevice(), &allocationInfo, &set);
+        return result == VK_SUCCESS;
     }
 
     void VulkanDescriptorPool::reset() const {
@@ -179,7 +185,12 @@ namespace YATAVK {
     }
 
     bool VulkanDescriptorWriter::build(VkDescriptorSet& set) {
-        if (!pool_->allocate(layout_->getHandle(), set)) {
+        VkResult result = VK_SUCCESS;
+        return build(set, result);
+    }
+
+    bool VulkanDescriptorWriter::build(VkDescriptorSet& set, VkResult& result) {
+        if (!pool_->allocate(layout_->getHandle(), set, result)) {
             return false;
         }
         overwrite(set);
